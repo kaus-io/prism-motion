@@ -11,7 +11,9 @@
 | `prism-motion-engine-kap` | Android + JVM | KAP 引擎：Android 走 KTX2+Vulkan，JVM 走自研解码 + Compose 绘制 |
 | `prism-motion-engine-vap` | Android + JVM | VAP 引擎（Android 走 MediaCodec；JVM 走自有 MP4 解封装 + OpenH264 解码） |
 | `prism-motion-probe` | JVM + Kotlin/Native | MP4 / KTX2 容器探测与校验，不解码 |
-| `prism-motion-format` | Android + JVM + Kotlin/Native | 容器格式：MP4 box、KTX2、vapc、字节序 |
+| `prism-motion-format` | Android + JVM + Kotlin/Native | 通用容器：字节序、MP4 box 遍历/装箱 |
+| `prism-motion-ktx` | Android + JVM + Kotlin/Native | KTX2 容器读写（只给 KAP 用） |
+| `prism-motion-vap` | Android + JVM + Kotlin/Native | vapc 配置解析/序列化（只给 VAP 用） |
 | `prism-motion-utils` | JVM + Kotlin/Native | 平台工具：文件读写（kotlinx-io）、进程、env、临时目录、可执行路径 |
 | `utils-jvm` | JVM | 纯 JVM 胶水：原生库（JNA）查找 |
 | `prism-motion-cli` | Kotlin/Native | CLI：探测、校验、图片帧打包（与上面同一个 Gradle build） |

@@ -1,7 +1,7 @@
 package com.zxhhyj.prism.motion.clinative
 
-import com.zxhhyj.prism.motion.format.Vapc
-import com.zxhhyj.prism.motion.format.VapcRect
+import com.zxhhyj.prism.motion.vap.Vapc
+import com.zxhhyj.prism.motion.vap.VapcRect
 
 /** VAP 画布布局与帧打包，规则与 vap-encode 的 EncodeLayout / AlphaFramePacker 一致。 */
 internal object VapPack {

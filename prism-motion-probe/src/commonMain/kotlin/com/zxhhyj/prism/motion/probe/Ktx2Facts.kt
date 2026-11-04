@@ -1,7 +1,7 @@
 package com.zxhhyj.prism.motion.probe
 
 /** KTX2 容器里抽出来的事实。 / Facts extracted from a KTX2 container. */
-internal class Ktx2Facts(
+internal class KtxFacts(
     val width: Int?,
     val height: Int?,
     val durationMs: Long?,

@@ -1,6 +1,6 @@
 package com.zxhhyj.prism.motion.engine.vap
 
-import com.zxhhyj.prism.motion.format.Vapc
+import com.zxhhyj.prism.motion.vap.Vapc
 /** 一帧 RGBA（已按 vapc 布局把蒙版合成为 alpha）。 / RGBA frame with the vapc mask folded into alpha. */
 internal class VapFrame(val width: Int, val height: Int, val rgba: ByteArray)
 

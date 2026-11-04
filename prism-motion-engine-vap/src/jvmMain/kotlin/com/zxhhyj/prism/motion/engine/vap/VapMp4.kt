@@ -2,7 +2,7 @@ package com.zxhhyj.prism.motion.engine.vap
 
 import com.zxhhyj.prism.motion.format.Bytes
 import com.zxhhyj.prism.motion.format.Mp4
-import com.zxhhyj.prism.motion.format.Vapc
+import com.zxhhyj.prism.motion.vap.Vapc
 
 /** 解封装后的 VAP：vapc 配置 + Annex-B 采样。 / Demuxed VAP: vapc config plus Annex-B samples. */
 internal class VapDemuxed(val config: Vapc, val samples: List<ByteArray>)

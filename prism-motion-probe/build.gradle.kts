@@ -22,6 +22,8 @@ kotlin {
         commonMain.dependencies {
             api(projects.prismMotionCore)
             api(projects.prismMotionFormat)
+            api(projects.prismMotionKtx)
+            api(projects.prismMotionVap)
             api(libs.kotlinx.io.core)
         }
         commonTest.dependencies { implementation(kotlin("test")) }

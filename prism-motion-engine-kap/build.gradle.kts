@@ -16,7 +16,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.prismMotionCompose)
-            api(projects.prismMotionFormat)
+            api(projects.prismMotionKtx)
             api(compose.foundation)
             implementation(libs.kotlinx.coroutines.core)
         }

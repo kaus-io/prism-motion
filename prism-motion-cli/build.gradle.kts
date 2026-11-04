@@ -62,6 +62,8 @@ kotlin {
             dependencies {
                 api(projects.prismMotionProbe)
                 api(projects.prismMotionFormat)
+                api(projects.prismMotionKtx)
+                api(projects.prismMotionVap)
                 api(projects.prismMotionUtils)
             }
         }

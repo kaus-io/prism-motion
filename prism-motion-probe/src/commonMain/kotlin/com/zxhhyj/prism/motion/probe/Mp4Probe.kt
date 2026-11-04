@@ -3,7 +3,7 @@ package com.zxhhyj.prism.motion.probe
 import com.zxhhyj.prism.motion.format.Bytes
 import com.zxhhyj.prism.motion.format.Mp4
 import com.zxhhyj.prism.motion.format.Mp4Box
-import com.zxhhyj.prism.motion.format.Vapc
+import com.zxhhyj.prism.motion.vap.Vapc
 /** MP4 / VAP 容器里抽出来的事实。字段为 null 表示容器里没有。 */
 internal data class Mp4Facts(
     val width: Int?,

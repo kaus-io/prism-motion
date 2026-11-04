@@ -41,5 +41,7 @@ include(
     ":prism-motion-cli",
     ":prism-motion-utils",
     ":prism-motion-format",
+    ":prism-motion-ktx",
+    ":prism-motion-vap",
     ":utils-jvm",
 )

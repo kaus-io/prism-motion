@@ -4,21 +4,21 @@ import com.zxhhyj.prism.motion.AnimationEngine
 import com.zxhhyj.prism.motion.AnimationEngineId
 import com.zxhhyj.prism.motion.AnimationResource
 import com.zxhhyj.prism.motion.AnimationSource
-import com.zxhhyj.prism.motion.format.Ktx2Format
-import com.zxhhyj.prism.motion.format.Ktx2Reader
+import com.zxhhyj.prism.motion.ktx.KtxFormat
+import com.zxhhyj.prism.motion.ktx.KtxReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
 /** 解码后的一帧 RGBA 像素。 / One decoded RGBA frame. */
-internal class Ktx2Frame(val width: Int, val height: Int, val rgba: ByteArray)
+internal class KtxFrame(val width: Int, val height: Int, val rgba: ByteArray)
 
 /** 一个 KTX2 动画的解码结果。 / Decoded KTX2 animation. */
-internal class Ktx2Animation(
+internal class KtxAnimation(
     val width: Int,
     val height: Int,
     val fps: Int,
-    val frames: List<Ktx2Frame>,
+    val frames: List<KtxFrame>,
 )
 
 /**
@@ -45,20 +45,20 @@ public class KapAnimationEngine : AnimationEngine {
         return KapJvmResource(animation)
     }
 
-    private fun decode(bytes: ByteArray): Ktx2Animation {
-        val parsed = Ktx2Reader.read(bytes)
+    private fun decode(bytes: ByteArray): KtxAnimation {
+        val parsed = KtxReader.read(bytes)
         val frames = parsed.layers.mapIndexed { index, layer ->
             val rgba = when (parsed.format) {
-                Ktx2Format.RGBA8 -> layer
+                KtxFormat.RGBA8 -> layer
                 null -> error("不支持的 vkFormat=${parsed.vkFormat}")
                 else -> AstcDecoder.decode(layer, parsed.width, parsed.height, parsed.vkFormat)
             }
             if (rgba.size != parsed.width * parsed.height * 4) {
                 error("第 $index 帧解码后大小不符")
             }
-            Ktx2Frame(parsed.width, parsed.height, rgba)
+            KtxFrame(parsed.width, parsed.height, rgba)
         }
-        return Ktx2Animation(parsed.width, parsed.height, parsed.fps, frames)
+        return KtxAnimation(parsed.width, parsed.height, parsed.fps, frames)
     }
 
     private companion object {

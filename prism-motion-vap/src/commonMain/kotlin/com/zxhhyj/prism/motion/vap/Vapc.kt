@@ -1,4 +1,4 @@
-package com.zxhhyj.prism.motion.format
+package com.zxhhyj.prism.motion.vap
 
 /** vapc 里的一个矩形（rgb 内容区或 alpha 蒙版区）。 / One rectangle inside the vapc config. */
 public class VapcRect(

@@ -1,7 +1,7 @@
 package com.zxhhyj.prism.motion.clinative
 
-import com.zxhhyj.prism.motion.format.Ktx2
-import com.zxhhyj.prism.motion.format.Ktx2Format
+import com.zxhhyj.prism.motion.ktx.Ktx
+import com.zxhhyj.prism.motion.ktx.KtxFormat
 import com.zxhhyj.prism.motion.format.Mp4
 import com.zxhhyj.prism.motion.probe.AnimationProbe
 import com.zxhhyj.prism.motion.utils.err
@@ -105,10 +105,10 @@ internal object PackCmd {
         asJson: Boolean,
     ): Int {
         val format = when ((options["format"] ?: "rgba8").lowercase()) {
-            "rgba8" -> Ktx2Format.RGBA8
-            "astc-4x4" -> Ktx2Format.ASTC_4X4
-            "astc-6x6" -> Ktx2Format.ASTC_6X6
-            "astc-8x8" -> Ktx2Format.ASTC_8X8
+            "rgba8" -> KtxFormat.RGBA8
+            "astc-4x4" -> KtxFormat.ASTC_4X4
+            "astc-6x6" -> KtxFormat.ASTC_6X6
+            "astc-8x8" -> KtxFormat.ASTC_8X8
             else -> return fail("--format 只接受 rgba8 / astc-4x4 / astc-6x6 / astc-8x8", asJson, EXIT_USAGE)
         }
         val files = pngFiles(framesDir)
@@ -120,7 +120,7 @@ internal object PackCmd {
         val tmp = Platform.makeTempDir("prism-motion-kap")
         try {
             val layers = ArrayList<ByteArray>()
-            if (format == Ktx2Format.RGBA8) {
+            if (format == KtxFormat.RGBA8) {
                 for (file in files) {
                     val frame = ImageDecoder.decodePng(Platform.readFile(file))
                     if (frame.width != width || frame.height != height) {
@@ -133,8 +133,8 @@ internal object PackCmd {
             } else {
                 val astcenc = options["astcenc"] ?: Tools.resolve("astcenc")
                 val block = when (format) {
-                    Ktx2Format.ASTC_4X4 -> "4x4"
-                    Ktx2Format.ASTC_6X6 -> "6x6"
+                    KtxFormat.ASTC_4X4 -> "4x4"
+                    KtxFormat.ASTC_6X6 -> "6x6"
                     else -> "8x8"
                 }
                 val expected = format.layerSize(width, height)
@@ -159,7 +159,7 @@ internal object PackCmd {
                 "anim.loop" to (options["loop"]?.toBooleanStrictOrNull() ?: true).toString(),
                 "anim.premultiplied" to premultiply.toString(),
             )
-            val bytes = Ktx2.write(format, width, height, layers, keyValues)
+            val bytes = Ktx.write(format, width, height, layers, keyValues)
             Platform.writeFile(out, bytes)
             return report("kap", out, null, files.size, fps, asJson)
         } finally {

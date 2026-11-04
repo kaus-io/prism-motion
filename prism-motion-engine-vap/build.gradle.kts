@@ -17,6 +17,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.prismMotionCompose)
             api(projects.prismMotionFormat)
+            api(projects.prismMotionVap)
             api(compose.foundation)
         }
         androidMain.dependencies {
