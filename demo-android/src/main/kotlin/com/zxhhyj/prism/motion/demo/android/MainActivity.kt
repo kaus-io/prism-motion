@@ -57,14 +57,14 @@ class MainActivity : ComponentActivity() {
 /** 资产列表：来自 assets 根目录，命名与桌面版一致。 / Asset names from the assets root. */
 fun listAssets(context: Context): List<String> =
     context.assets.list("").orEmpty()
-        .filter { it.endsWith(".mp4") || it.endsWith(".ktx") }
+        .filter { it.endsWith(".prism") }
         .sorted()
 
 /** 桌面版同款：两个引擎 + 各自的渲染器。 / Same as the desktop demo: both engines. */
 @Composable
 fun rememberDemoRegistry(context: Context): PrismMotionRegistry = remember(context) {
     PrismMotionRegistry(
-        engines = listOf(PrismMotionVapEngine(), PrismMotionKapEngine(context)),
+        engines = listOf(PrismMotionVapEngine(context), PrismMotionKapEngine(context)),
         renderers = mapOf(
             PrismMotionEngineId.Vap to PrismMotionVapRenderer,
             PrismMotionEngineId.Kap to PrismMotionKapRenderer,

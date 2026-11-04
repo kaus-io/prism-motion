@@ -69,7 +69,7 @@ class BenchActivity : ComponentActivity() {
             targetFps = intent.getIntExtra("target_fps", 30).coerceIn(1, 240).toDouble(),
             refresh = display?.refreshRate?.toDouble() ?: 60.0,
         )
-        val report = File(getExternalFilesDir(null) ?: filesDir, "bench.csv")
+        val report = File(externalCacheDir ?: cacheDir, "bench.csv")
         report.writeText(VERSION_HEADER + "," + HEADER + "\n")
         File(report.parentFile, "samples.csv").writeText("$VERSION_HEADER,asset,count,elapsed_ms,phase,cpu_percent,pss_mb,submitted_frames\n")
         File(report.parentFile, "presents.csv").writeText("$VERSION_HEADER,asset,count,instance,elapsed_ns,phase\n")
@@ -121,6 +121,11 @@ private fun PlayerGrid(run: Run, registry: PrismMotionRegistry, modifier: Modifi
                 SideEffect {
                     run.slots[item] = state
                     if (state.resource != null && observable == null) run.diagnosticsError = "engine does not expose frame callbacks"
+                    state.resource?.let { resource ->
+                        if (resource.width != run.tilePx || resource.height != run.tilePx) {
+                            run.diagnosticsError = "Prism canvas does not match the requested source-pixel grid"
+                        }
+                    }
                 }
                 DisposableEffect(observable) {
                     observable?.setFrameObserver(run.probes[item])
@@ -162,7 +167,7 @@ private fun BenchScreen(context: Context, only: String?, counts: List<Int>, conf
     var mounted by remember { mutableStateOf(true) }
     val registry = remember {
         PrismMotionRegistry(
-            listOf(PrismMotionVapEngine(), PrismMotionKapEngine(context)),
+            listOf(PrismMotionVapEngine(context), PrismMotionKapEngine(context)),
             mapOf(PrismMotionEngineId.Vap to PrismMotionVapRenderer, PrismMotionEngineId.Kap to PrismMotionKapRenderer),
         )
     }

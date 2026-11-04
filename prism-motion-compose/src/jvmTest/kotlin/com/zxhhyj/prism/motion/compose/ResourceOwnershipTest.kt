@@ -22,7 +22,7 @@ class ResourceOwnershipTest {
     @Test
     fun runtimePlaybackErrorOverridesLoadedReadyStatus() {
         val resource = FakeResource()
-        val state = PrismMotionState(PrismMotionRequest(PrismMotionSource.Asset("test.ktx")), null,
+        val state = PrismMotionState(PrismMotionRequest(PrismMotionSource.Asset("test.prism")), null,
             resource, null, PrismMotionStatus.Ready)
         assertEquals(PrismMotionStatus.Ready, state.status)
         val error = IllegalStateException("decoder failed")

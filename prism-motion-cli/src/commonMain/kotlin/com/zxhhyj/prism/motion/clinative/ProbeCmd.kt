@@ -1,6 +1,7 @@
 package com.zxhhyj.prism.motion.clinative
 
 import com.zxhhyj.prism.motion.PrismMotionFormat
+import com.zxhhyj.prism.motion.format.PrismPayloadKind
 import com.zxhhyj.prism.motion.probe.PrismMotionProbe
 import com.zxhhyj.prism.motion.probe.ProbeIssue
 import com.zxhhyj.prism.motion.probe.ProbeResult
@@ -8,19 +9,20 @@ import com.zxhhyj.prism.motion.probe.ProbeSeverity
 import com.zxhhyj.prism.motion.utils.err
 import com.zxhhyj.prism.motion.utils.Platform
 
-/** engines / probe / check 三个只读命令。 */
+/** engines / probe / check 三个只读命令。 / Read-only engines, probe and check commands. */
 internal object ProbeCmd {
 
     private data class EngineInfo(
         val id: String,
         val format: PrismMotionFormat,
+        val payloadKind: PrismPayloadKind,
         val decode: List<String>,
         val encode: List<String>,
     )
 
     private val ENGINES = listOf(
-        EngineInfo("Vap", PrismMotionFormat.Vap, decode = listOf("android"), encode = listOf("linuxX64")),
-        EngineInfo("Kap", PrismMotionFormat.Kap, decode = listOf("android"), encode = listOf("linuxX64")),
+        EngineInfo("Vap", PrismMotionFormat.Prism, PrismPayloadKind.Vap, decode = listOf("android"), encode = listOf("linuxX64")),
+        EngineInfo("Kap", PrismMotionFormat.Prism, PrismPayloadKind.Ktx2, decode = listOf("android"), encode = listOf("linuxX64")),
     )
 
     fun engines(asJson: Boolean): Int {
@@ -31,6 +33,7 @@ internal object ProbeCmd {
                         "id" to Json.str(it.id),
                         "format" to Json.str(it.format.name),
                         "suffix" to Json.str(it.format.suffix),
+                        "payloadKind" to Json.str(it.payloadKind.name),
                         "decode" to Json.arr(it.decode.map(Json::str)),
                         "encode" to Json.arr(it.encode.map(Json::str)),
                     )
@@ -135,7 +138,7 @@ internal object ProbeCmd {
             val path = "$root/$name"
             if (Platform.isDirectory(path)) {
                 walk(path, out)
-            } else if (PrismMotionFormat.ofFileName(name) != null) {
+            } else if (PrismMotionFormat.ofFileName(name) != null || name.substringAfterLast('.', "").lowercase() in setOf("mp4", "ktx", "ktx2")) {
                 out += path
             }
         }
@@ -151,15 +154,22 @@ internal object ProbeCmd {
         )
     }
 
-    private fun fileName(path: String): String = path.substringAfterLast('/')
+    private fun fileName(path: String): String = path.substringAfterLast('/').substringAfterLast('\\')
+
+    private fun engineLabel(kind: PrismPayloadKind?): String? = when (kind) {
+        PrismPayloadKind.Vap -> "Vap"
+        PrismPayloadKind.Ktx2 -> "Kap"
+        null -> null
+    }
 
     private fun printHuman(result: ProbeResult) {
         val format = result.format?.name?.lowercase() ?: "unknown"
         val size = result.width?.let { "$it x ${result.height}" } ?: "-"
-        val fps = result.fps?.let { "$it fps" } ?: "-"
+        val fps = result.fpsNumerator?.let { "$it/${result.fpsDenominator} fps" } ?: "-"
+        val engine = engineLabel(result.payloadKind) ?: "unknown"
         val frames = result.frameCount?.let { "$it f" } ?: "-"
         val duration = result.durationMs?.let { "${it}ms" } ?: "-"
-        println("${result.fileName}  $format  $size  $fps  $frames  $duration  ${if (result.ok) "ok" else "FAILED"}")
+        println("${result.fileName}  $format/$engine  $size  $fps  $frames  $duration  ${if (result.ok) "ok" else "FAILED"}")
         for (issue in result.issues) {
             println("  ${issue.severity.name.lowercase()}: ${issue.code} — ${issue.message}")
         }
@@ -168,6 +178,8 @@ internal object ProbeCmd {
     internal fun toJson(result: ProbeResult): String = Json.obj(
         "fileName" to Json.str(result.fileName),
         "format" to Json.str(result.format?.name),
+        "payloadKind" to Json.str(result.payloadKind?.name),
+        "engine" to Json.str(engineLabel(result.payloadKind)),
         "ok" to Json.bool(result.ok),
         "bytes" to Json.num(result.bytes),
         "sha256" to Json.str(result.sha256),
@@ -176,6 +188,9 @@ internal object ProbeCmd {
         "durationMs" to Json.num(result.durationMs),
         "frameCount" to Json.num(result.frameCount),
         "fps" to Json.num(result.fps),
+        "fpsNumerator" to Json.num(result.fpsNumerator),
+        "fpsDenominator" to Json.num(result.fpsDenominator),
+        "alphaMode" to Json.str(result.alphaMode?.name),
         "hasAlpha" to Json.bool(result.hasAlpha),
         "metadata" to Json.obj(result.metadata),
         "issues" to Json.arr(

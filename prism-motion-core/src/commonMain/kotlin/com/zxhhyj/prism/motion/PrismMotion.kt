@@ -17,13 +17,9 @@ public sealed interface PrismMotionSource {
 /** 已注册的引擎。 */
 public enum class PrismMotionEngineId { Kap, Vap }
 
-/** 容器格式与负责它的引擎、后缀。CLI 与引擎共用这一份定义。 */
-public enum class PrismMotionFormat(
-    public val engine: PrismMotionEngineId,
-    public val suffix: String,
-) {
-    Vap(PrismMotionEngineId.Vap, ".mp4"),
-    Kap(PrismMotionEngineId.Kap, ".ktx"),
+/** 唯一对外资源容器；内部载荷决定引擎，不由后缀猜测。 / The sole external container; its payload, not a suffix guess, selects the engine. */
+public enum class PrismMotionFormat(public val suffix: String) {
+    Prism(".prism"),
     ;
 
     public companion object {
@@ -92,7 +88,7 @@ public interface PrismMotionResource {
 public interface PrismMotionEngine {
     public val id: PrismMotionEngineId
 
-    public fun supports(source: PrismMotionSource): Boolean
+    public suspend fun supports(source: PrismMotionSource): Boolean
 
     public suspend fun open(source: PrismMotionSource): PrismMotionResource
 }
@@ -103,7 +99,7 @@ public class PrismMotionEngineRegistry(engines: List<PrismMotionEngine>) {
 
     public val engineIds: Set<PrismMotionEngineId> get() = engines.keys
 
-    public fun engineFor(request: PrismMotionRequest): PrismMotionEngine? {
+    public suspend fun engineFor(request: PrismMotionRequest): PrismMotionEngine? {
         request.engine?.let { requested -> return engines[requested]?.takeIf { it.supports(request.source) } }
         return engines.values.firstOrNull { it.supports(request.source) }
     }

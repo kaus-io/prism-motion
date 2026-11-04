@@ -1,6 +1,12 @@
 # Prism Motion
 
-统一动画门面：`VAP`（MP4 + alpha）与 `KAP`（KTX2 + Vulkan）作为可替换的引擎实现。
+统一动画资源与播放门面：对外只接受 `.prism`，由容器声明选择视频或纹理播放引擎。裸 `.mp4/.ktx/.ktx2` 资源入口已废弃，不做静默兼容。
+
+## 原生资源格式
+
+固定头、统一元数据、载荷索引之后，以对齐的区域原样保存完整 VAP MP4 或 KTX2；不是 ZIP，不重复编码。格式独立版本化，带前缀 CRC32 和载荷 SHA-256，具体布局与校验边界见 [Prism 格式规范](<docs/prism-format.md>)。
+
+Android 通过底层播放器的只读区域来源直接加载，不提取临时 MP4/KTX。JVM 软件解码仍会在内存中物化载荷，不能将整个链路称为零拷贝。
 
 ## 模块
 
@@ -10,8 +16,8 @@
 | `prism-motion-compose` | Android + JVM（Compose Multiplatform） | `PrismMotionOutput` / `PrismMotionRenderer` / `PrismMotionState` / `PrismMotion()` |
 | `prism-motion-engine-kap` | Android + JVM | KAP 引擎：Android 走 KTX2+Vulkan，JVM 走自研解码 + Compose 绘制 |
 | `prism-motion-engine-vap` | Android + JVM | VAP 引擎（Android 走 MediaCodec；JVM 走自有 MP4 解封装 + OpenH264 解码） |
-| `prism-motion-probe` | JVM + Kotlin/Native | MP4 / KTX2 容器探测与校验，不解码 |
-| `prism-motion-format` | Android + JVM + Kotlin/Native | 通用容器：字节序、MP4 box 遍历/装箱 |
+| `prism-motion-probe` | JVM + Kotlin/Native | Prism 容器完整性与原生载荷一致性校验，不解码 |
+| `prism-motion-format` | Android + JVM + Kotlin/Native | Prism 二进制协议、统一元数据、CRC/SHA、内部字节序与 MP4 工具 |
 | `prism-motion-ktx` | Android + JVM + Kotlin/Native | KTX2 容器读写（只给 KAP 用） |
 | `prism-motion-vap` | Android + JVM + Kotlin/Native | vapc 配置解析/序列化（只给 VAP 用） |
 | `prism-motion-utils` | JVM + Kotlin/Native | 平台工具：文件读写（kotlinx-io）、进程、env、临时目录、可执行路径 |
@@ -25,6 +31,7 @@
 ## 契约
 
 - 引擎只负责“能否打开”和“如何打开”：`supports(source)` / `open(source)`。
+- `supports(source)` 与 `open(source)` 均可挂起；按容器载荷选择引擎的头部读取在 IO 上执行。
 - 打开后是 `PrismMotionResource`：尺寸、时长、进度、`attach(PrismMotionSurface)` / `detach()`。
 - `PrismMotionSurface` 平台无关：Android 传 `AndroidPrismMotionSurface(Surface)`，
   JVM 传 `HeadlessPrismMotionSurface`；宿主（TextureView / SurfaceView / 外部 Surface）由调用方选择。
@@ -48,7 +55,7 @@ python3 scripts/analyze-android-bench.py \
   --input benchmarks/alpha01/data/raw.csv --json
 ```
 
-产品版本与独立 bench 协议版本由 [gradle.properties](<gradle.properties>) 管理，从 `alpha01` 开始。
+产品版本、独立 bench 版本与递增 Android versionCode 由 [gradle.properties](<gradle.properties>) 管理。软件版本使用 SemVer 及两位预发布序号；已归档的历史 `alpha01` 标记不重写。
 Android/CLI 产物使用同一产品版本；bench 界面、每条原始记录和 manifest 同时保留产品/协议版本。
 运行器校验安装包内烘焙的版本、APK 与素材指纹，拒绝把旧 APK 或不同协议的数据冒充当前版本。
 原始记录按实际版本保存到 `benchmarks/<version>/runs/<run_id>/`，避免覆盖已有基线；正式归档的数据与图表分别放在 `data/`、`charts/`。当前归档：[alpha01 数据](<benchmarks/alpha01/data/>) · [alpha01 六项倍率图](<benchmarks/alpha01/charts/>)。manifest 保留实际运行时参数与指纹，迁移不改写历史记录。公开图固定 KAP 为 1× 基准，不导出具体配置、临时 Markdown 报告或压缩包。
@@ -56,20 +63,22 @@ Android/CLI 产物使用同一产品版本；bench 界面、每条原始记录�
 公开图中的倍率是同场景相对开销，不是综合跑分或等画质效率；呈现回调也不等同物理屏幕扫描。
 
 资产目录默认是模块相对路径 `../demo-data`，Gradle 可用 `-PdemoAssets=<dir>` 覆盖；运行脚本时可设置 `DEMO_ASSETS`。
-资产命名：`{alpha|opaque}-{size}-{quality}.{mp4|ktx}`；`ASSETS` 使用不带后缀的精确名称。
+示例资产命名：`{alpha|opaque}-{size}-{quality}.prism`；`ASSETS` 使用不带后缀的精确名称。引擎以容器索引声明为准，不从文件名猜测。
 
 **旧图已作废**：[历史图表](<docs/charts/fps_vs_count.png>) 来自未验证播放的旧 bench，不能用来比较引擎性能；
 特别是 KAP `first_frame=-1` 的行实际上没有成功加载。源码对齐、修复和当前验证见 [性能说明](<docs/performance.md>)。
 
 ### Android 资产打包
 
-KAP 通过 `AssetManager.openFd()` / native FD 读取 KTX，宿主必须禁止压缩 `.ktx` 和兼容的 `.ktx2`：
+两个 Android 后端通过 `AssetManager.openFd()` 获取 Prism 区域；宿主必须原样打包 `.prism`：
 
 ```kotlin
 android {
-    androidResources { noCompress += listOf("ktx", "ktx2") }
+    androidResources { noCompress += "prism" }
 }
 ```
+
+文件来源同样使用只读 `offset/length` 区域。资源探测与引擎选择可挂起，在 IO 上执行头部读取；不会因使用同一个后缀而选错引擎。
 
 统一请求默认自动播放，`autoPlay=false` 只准备首帧；`repeatCount=0` 播一次、`-1` 无限循环。
 播放模式默认保持 Hanna 实际使用的 `Streaming(32)`，可向 Android `PrismMotionKapEngine` 传入其它 `KtxPlaybackMode`；
@@ -85,11 +94,13 @@ android {
 
 `local.properties` 需要一行 `sdk.dir=<Android SDK>`。
 
-引擎依赖的 KAP / VAP 没有公共仓库，只有本机 maven（`0.x-LOCAL`）。在各自仓库执行：
+引擎依赖支持 Region 来源的 KAP / VAP 版本化包，坐标以 [依赖清单](<gradle/libs.versions.toml>) 为准。当前通过本机 Maven 接入，不引用其它仓库的源码或构建目录。在各 SDK 仓库验证后执行：
 
 ```bash
-./gradlew publishToMavenLocal -Pversion=0.1.0-LOCAL -PskipSigning=true
+./gradlew publishToMavenLocal -PskipSigning=true
 ```
+
+已发布版本不覆盖；修改 SDK 后应使用新的版本号。
 
 ## CLI
 
@@ -104,7 +115,7 @@ CLI 只有一个实现：Kotlin/Native 编译的原生可执行文件，不依�
 | 平台 | 构建方式 | 状态 |
 | --- | --- | --- |
 | Linux x86_64 | 任意主机交叉编译 | 已验证 |
-| Windows x86_64 | 在 Linux 上交叉编译 | 只支持 `probe` / `check` / `engines` / `pack kap --format astc-*`；PNG 解码与 H.264 编码未接入 |
+| Windows x86_64 | 在 Linux 上交叉编译 | 当前支持 `probe` / `check` / `engines`；新打包流程需要 PNG 解码以生成准确元数据，Windows PNG/H.264 尚未接入 |
 | macOS arm64 / x86_64 | 只能在 macOS 主机上构建 | 代码已就绪，未在本机构建 |
 
 `tools/` 按平台分目录（`tools/linux-x86_64/`、`tools/windows-x86_64/`、`tools/macos-arm64/` …），
@@ -112,10 +123,10 @@ CLI 只有一个实现：Kotlin/Native 编译的原生可执行文件，不依�
 
 ```bash
 prism-motion.kexe engines                                  # 引擎与平台支持
-prism-motion.kexe probe assets/a.mp4 assets/b.ktx         # 读容器元数据
-prism-motion.kexe check assets/                            # 校验整批资源
-prism-motion.kexe pack kap --frames frames/ --out out.ktx --fps 24 --format rgba8
-prism-motion.kexe pack vap --frames frames/ --out out.mp4 --fps 30
+prism-motion.kexe probe assets/video.prism assets/texture.prism  # 读统一元数据与载荷声明
+prism-motion.kexe check assets/                                 # 校验整批资源
+prism-motion.kexe pack kap --frames frames/ --out texture.prism --fps 24 --format rgba8
+prism-motion.kexe pack vap --frames frames/ --out video.prism --fps 30
 ```
 
 - 所有命令支持 `--json`，输出 `{"ok":…,"command":…}`，便于 agent 解析。
@@ -123,8 +134,8 @@ prism-motion.kexe pack vap --frames frames/ --out out.mp4 --fps 30
 - `check` 把不认识的扩展名也算失败；读不了的目录直接跳过。
 - `pack vap` / `pack kap --format rgba8` 用内置栈：stb_image 解 PNG → OpenH264 编码 → 自写 MP4 封装，
   **不需要任何外部工具**；只有 `pack kap --format astc-*` 需要 `astcenc`（内嵌，也可用 `--astcenc` 覆盖）。
-- `probe` 读取：VAP 的 `vapc` box（尺寸 / 帧数 / fps / hasAlpha）与 `mvhd` 时长；
-  KAP 的 KTX2 头（尺寸 / layerCount）与 key/value（`anim.fps` 等）。
+- `probe` 先验证 Prism 外层结构、CRC32、SHA-256，再比对内部载荷类型、尺寸、帧数、帧率与透明语义；矛盾时报错，不静默改用另一份配置。
+- 当前只支持一份载荷、sRGB 和整数 CFR 播放；有理帧率在格式层保留，当前后端明确拒绝不支持的分母。
 
 ### 构建结构
 

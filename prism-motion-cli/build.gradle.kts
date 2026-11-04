@@ -32,14 +32,16 @@ val onMac = hostOs.contains("mac")
 
 kotlin {
     linuxX64 {
+        binaries.configureEach {
+            linkerOpts(
+                "-L${rootProject.projectDir}/thirdparty/lib/linux-x86_64",
+                "-lprismcodec", "-lopenh264", "-lstb", "-lstdc++",
+            )
+        }
         binaries {
             executable {
                 entryPoint = "com.zxhhyj.prism.motion.clinative.main"
                 baseName = "prism-motion"
-                linkerOpts(
-                    "-L${rootProject.projectDir}/thirdparty/lib/linux-x86_64",
-                    "-lprismcodec", "-lopenh264", "-lstb", "-lstdc++",
-                )
             }
         }
         compilations.getByName("main").cinterops {
@@ -87,6 +89,7 @@ kotlin {
     }
 
     sourceSets {
+        commonTest.dependencies { implementation(kotlin("test")) }
         val commonMain by getting {
             kotlin.srcDir(versionSourceDirectory)
             dependencies {

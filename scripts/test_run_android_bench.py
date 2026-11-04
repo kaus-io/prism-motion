@@ -18,8 +18,9 @@ import zipfile
 SPEC = importlib.util.spec_from_file_location("run_android_bench", Path(__file__).with_name("run-android-bench.py"))
 RUNNER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(RUNNER)
-ALPHA_VERSIONS = {"app_version": "alpha01", "bench_version": "alpha01", "version_code": 1}
-CSV_VERSIONS = {key: str(value) for key, value in ALPHA_VERSIONS.items()}
+CURRENT_VERSIONS = {"app_version": "1.0.0-alpha02", "bench_version": "1.0.0-alpha02", "version_code": 2}
+ROOT_PROPERTIES = "version=1.0.0-alpha02\nbenchVersion=1.0.0-alpha02\nandroidVersionCode=2\n"
+CSV_VERSIONS = {key: str(value) for key, value in CURRENT_VERSIONS.items()}
 
 
 def read_rows(path):
@@ -30,7 +31,7 @@ def read_rows(path):
 
 def summary(count=1, valid="true", **extra):
     """创建可扩展的概要行。 / Creates an extensible summary row."""
-    return {"asset": "effect.ktx", "count": str(count), "valid": valid, "error": ""} | CSV_VERSIONS | extra
+    return {"asset": "effect.prism", "count": str(count), "valid": valid, "error": ""} | CSV_VERSIONS | extra
 
 
 def dataset(rows, fields=None):
@@ -38,10 +39,10 @@ def dataset(rows, fields=None):
     return list(fields or rows[0]), [dict(row) for row in rows]
 
 
-def write_apk(path, versions=ALPHA_VERSIONS):
+def write_apk(path, versions=CURRENT_VERSIONS):
     """创建仅含测试素材与可选版本资产的 ZIP 安装包。 / Creates a ZIP APK with fixture materials and optional version metadata."""
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("assets/effect.ktx", b"fixture", compress_type=zipfile.ZIP_STORED)
+        archive.writestr("assets/effect.prism", b"fixture", compress_type=zipfile.ZIP_STORED)
         if versions is not None:
             archive.writestr(RUNNER.VERSION_ASSET, json.dumps(versions))
 
@@ -55,25 +56,26 @@ class VersionTests(unittest.TestCase):
         self.apk = Path(self.temp.name) / "fixture.apk"
         self.project = Path(self.temp.name) / "project"
         self.project.mkdir()
-        (self.project / "gradle.properties").write_text("version=alpha01\nbenchVersion=alpha01\n", encoding="utf-8")
+        (self.project / "gradle.properties").write_text(ROOT_PROPERTIES, encoding="utf-8")
         root_patch = mock.patch.object(RUNNER, "ROOT", self.project)
         root_patch.start()
         self.addCleanup(root_patch.stop)
 
-    def test_alpha01_apk_metadata_and_material_hash(self):
+    def test_semver_apk_metadata_and_material_hash(self):
         write_apk(self.apk)
-        self.assertEqual(RUNNER.apk_versions(self.apk, required=True), ALPHA_VERSIONS)
+        self.assertEqual(RUNNER.apk_versions(self.apk, required=True), CURRENT_VERSIONS)
         self.assertEqual(RUNNER.apk_asset_hashes(self.apk, ["effect"]), {"effect": hashlib.sha256(b"fixture").hexdigest()})
 
-    def test_alpha_sequence_maps_to_android_integer_code(self):
-        for version, code in (("alpha01", 1), ("alpha09", 9), ("alpha10", 10), ("alpha100", 100), ("alpha2100000000", 2100000000)):
-            versions = ALPHA_VERSIONS | {"app_version": version, "version_code": code}
-            with self.subTest(version=version):
-                write_apk(self.apk, versions)
-                self.assertEqual(RUNNER.apk_versions(self.apk, required=True), versions)
+    def test_semver_is_independent_of_explicit_android_code(self):
+        for version in ("0.0.0", "1.0.0-alpha01", "1.0.0-alpha99", "2.3.4-beta01", "2.3.4-rc99", "10.20.30"):
+            for code in (1, 2, 100, 2100000000):
+                versions = CURRENT_VERSIONS | {"app_version": version, "version_code": code}
+                with self.subTest(version=version, code=code):
+                    write_apk(self.apk, versions)
+                    self.assertEqual(RUNNER.apk_versions(self.apk, required=True), versions)
 
     def test_bench_protocol_can_advance_independently(self):
-        versions = ALPHA_VERSIONS | {"bench_version": "alpha02"}
+        versions = CURRENT_VERSIONS | {"bench_version": "2.0.0-beta01"}
         write_apk(self.apk, versions)
         self.assertEqual(RUNNER.apk_versions(self.apk, required=True), versions)
 
@@ -84,12 +86,13 @@ class VersionTests(unittest.TestCase):
             RUNNER.apk_versions(self.apk, required=True)
 
     def test_invalid_or_missing_baked_fields_are_rejected(self):
-        invalid = [[], {}, {"app_version": "alpha01"}]
-        invalid += [ALPHA_VERSIONS | {"app_version": value}
-                    for value in (None, "1.0", "alpha00", "alpha1", "alpha001", "alpha01\n", "alpha-01")]
-        invalid += [ALPHA_VERSIONS | {"bench_version": value} for value in ("", "alpha00", "alpha1", "1.0")]
-        invalid += [ALPHA_VERSIONS | {"version_code": value} for value in (None, True, "1", 1.0, 0, -1, 2, 2100000001)]
-        invalid += [ALPHA_VERSIONS | {"app_version": "alpha2100000001", "version_code": 2100000001}]
+        invalid = [[], {}, {"app_version": "1.0.0-alpha02"}]
+        noncanonical = (None, "", "1.0", "alpha01", "1.0.0alpha01", "1.0.0-alpha00", "1.0.0-alpha1",
+                        "1.0.0-alpha001", "1.0.0-alpha100", "1.0.0-alpha.1", "1.0.0-ALPHA01", "1.0.0-SNAPSHOT",
+                        "01.0.0", "1.00.0", "1.0.00", "1.0.0-alpha01\n", "1.0.0+build")
+        invalid += [CURRENT_VERSIONS | {field: value}
+                    for field in ("app_version", "bench_version") for value in noncanonical]
+        invalid += [CURRENT_VERSIONS | {"version_code": value} for value in (None, True, "2", 2.0, 0, -1, 2100000001)]
         for versions in invalid:
             with self.subTest(versions=versions):
                 write_apk(self.apk, versions)
@@ -105,7 +108,7 @@ class VersionTests(unittest.TestCase):
     def test_duplicate_version_asset_is_rejected(self):
         write_apk(self.apk)
         with self.assertWarns(UserWarning), zipfile.ZipFile(self.apk, "a") as archive:
-            archive.writestr(RUNNER.VERSION_ASSET, json.dumps(ALPHA_VERSIONS))
+            archive.writestr(RUNNER.VERSION_ASSET, json.dumps(CURRENT_VERSIONS))
         with self.assertRaisesRegex(RuntimeError, "duplicate version assets"):
             RUNNER.apk_versions(self.apk, required=True)
 
@@ -114,25 +117,38 @@ class VersionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "exactly one material"):
             RUNNER.apk_asset_hashes(self.apk, ["missing"])
         with zipfile.ZipFile(self.apk, "a") as archive:
-            archive.writestr("assets/effect.mp4", b"other fixture")
+            archive.writestr("assets/nested/effect.prism", b"other fixture", compress_type=zipfile.ZIP_STORED)
         with self.assertRaisesRegex(RuntimeError, "exactly one material"):
             RUNNER.apk_asset_hashes(self.apk, ["effect"])
 
     def test_expected_root_versions_reject_stale_apks(self):
         args = RUNNER.argument_parser().parse_args(["serial", "--variant", "benchmark"])
-        RUNNER.check_expected_versions(args, ALPHA_VERSIONS)
-        for change in ({"app_version": "alpha00", "version_code": 0}, {"app_version": "alpha02", "version_code": 2},
-                       {"bench_version": "alpha02"}):
+        RUNNER.check_expected_versions(args, CURRENT_VERSIONS)
+        for change in ({"app_version": "1.0.0-alpha01"}, {"app_version": "2.0.0"},
+                       {"bench_version": "2.0.0-beta01"}, {"version_code": 1}):
             with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, "Stale benchmark APK"):
-                RUNNER.check_expected_versions(args, ALPHA_VERSIONS | change)
+                RUNNER.check_expected_versions(args, CURRENT_VERSIONS | change)
 
-    def test_explicit_expected_versions_allow_intentional_historical_runs(self):
-        args = RUNNER.argument_parser().parse_args(["serial", "--variant", "benchmark", "--expect-app-version", "alpha02",
-                                                    "--expect-bench-version", "alpha03"])
-        RUNNER.check_expected_versions(args, {"app_version": "alpha02", "bench_version": "alpha03", "version_code": 2})
-        args.expect_app_version = "1.0"
+    def test_explicit_expected_versions_and_code_allow_intentional_semver_runs(self):
+        args = RUNNER.argument_parser().parse_args(["serial", "--variant", "benchmark", "--expect-app-version", "1.0.0-alpha01",
+                                                    "--expect-bench-version", "2.0.0-rc01", "--expect-version-code", "1"])
+        RUNNER.check_expected_versions(args, {"app_version": "1.0.0-alpha01", "bench_version": "2.0.0-rc01", "version_code": 1})
+        args.expect_app_version = "alpha01"
         with self.assertRaisesRegex(RuntimeError, "invalid expected app_version"):
-            RUNNER.check_expected_versions(args, ALPHA_VERSIONS)
+            RUNNER.check_expected_versions(args, CURRENT_VERSIONS)
+
+    def test_missing_or_invalid_root_code_cannot_bypass_benchmark_guard(self):
+        args = RUNNER.argument_parser().parse_args(["serial", "--variant", "benchmark"])
+        for code in ("", "0", "-1", "02", "+2", "2.0", "2100000001", "missing"):
+            properties = ROOT_PROPERTIES.replace("androidVersionCode=2\n", "" if code == "missing" else f"androidVersionCode={code}\n")
+            (self.project / "gradle.properties").write_text(properties, encoding="utf-8")
+            with self.subTest(code=code), self.assertRaisesRegex(RuntimeError, "invalid expected version_code"):
+                RUNNER.check_expected_versions(args, CURRENT_VERSIONS)
+
+    def test_explicit_versions_still_require_current_root_code_by_default(self):
+        args = RUNNER.argument_parser().parse_args(["serial", "--variant", "benchmark", "--expect-app-version", "1.0.0-alpha01"])
+        with self.assertRaisesRegex(RuntimeError, "Stale benchmark APK version_code"):
+            RUNNER.check_expected_versions(args, CURRENT_VERSIONS | {"app_version": "1.0.0-alpha01", "version_code": 1})
 
     def test_every_row_and_version_field_is_checked_without_relabeling(self):
         for field in RUNNER.VERSION_FIELDS:
@@ -140,11 +156,11 @@ class VersionTests(unittest.TestCase):
                 rows = [summary(), summary(**{field: bad})]
                 original = [dict(row) for row in rows]
                 with self.subTest(field=field, bad=bad), self.assertRaisesRegex(RuntimeError, "row 2 version mismatch"):
-                    RUNNER.validate_versions(list(rows[0]), rows, ALPHA_VERSIONS, "bench.csv")
+                    RUNNER.validate_versions(list(rows[0]), rows, CURRENT_VERSIONS, "bench.csv")
                 self.assertEqual(rows, original)
         for field in RUNNER.VERSION_FIELDS:
             with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, "missing required version columns"):
-                RUNNER.validate_versions([key for key in summary() if key != field], [], ALPHA_VERSIONS, "bench.csv")
+                RUNNER.validate_versions([key for key in summary() if key != field], [], CURRENT_VERSIONS, "bench.csv")
 
 
 class PlanningTests(unittest.TestCase):
@@ -214,8 +230,8 @@ class PersistenceTests(unittest.TestCase):
         self.presents = Path(self.temp.name) / "bench-presents.csv"
         self.args = RUNNER.argument_parser().parse_args(["device-1", "--seed", "20261104", "--allow-invalid"])
         self.plan = [{"repeat": 1, "trial": 1, "asset": "effect", "counts": [1], "run_id": "run-1"}]
-        self.files = {"effect": "effect.ktx"}
-        self.versions = dict(ALPHA_VERSIONS)
+        self.files = {"effect": "effect.prism"}
+        self.versions = dict(CURRENT_VERSIONS)
         self.asset_hashes = {"effect": hashlib.sha256(b"fixture").hexdigest()}
         self.command = mock.patch.object(RUNNER, "command", return_value=subprocess.CompletedProcess([], 0, ""))
         self.command_mock = self.command.start()
@@ -234,9 +250,9 @@ class PersistenceTests(unittest.TestCase):
         if name == "bench.csv":
             return dataset([summary(asset_bytes="1024", submit_p99_ms="7.3", thermal_status_end="0", submitted_frames="1")])
         if name == "samples.csv":
-            return dataset([{"asset": "effect.ktx", "count": "1", "phase": "memory", "pss_mb": "19.5", "custom": "x"} | CSV_VERSIONS])
+            return dataset([{"asset": "effect.prism", "count": "1", "phase": "memory", "pss_mb": "19.5", "custom": "x"} | CSV_VERSIONS])
         self.assertEqual(optional, self.args.variant != "benchmark")
-        return dataset([{"asset": "effect.ktx", "count": "1", "instance": "0", "elapsed_ns": "123", "phase": "measure"} | CSV_VERSIONS])
+        return dataset([{"asset": "effect.prism", "count": "1", "instance": "0", "elapsed_ns": "123", "phase": "measure"} | CSV_VERSIONS])
 
     def test_metadata_arbitrary_fields_and_single_count_launch(self):
         with mock.patch.object(RUNNER, "wait_done") as wait, mock.patch.object(RUNNER, "read_remote_csv", side_effect=self.standard_remote):
@@ -244,7 +260,9 @@ class PersistenceTests(unittest.TestCase):
         launch = wait.call_args.args[2]
         self.assertEqual(launch[launch.index("counts") + 1], "1")
         self.assertEqual(launch[launch.index("warmup_ms") - 1:launch.index("warmup_ms") + 2], ["--el", "warmup_ms", "1000"])
-        self.assertEqual(self.command_mock.call_args.args[0], ["adb", "-s", "device-1", "shell", "am", "force-stop", RUNNER.PACKAGE])
+        self.assertEqual(self.command_mock.call_args_list[0].args[0], ["adb", "-s", "device-1", "shell", "am", "force-stop", RUNNER.PACKAGE])
+        self.assertEqual(self.command_mock.call_args.args[0], ["adb", "-s", "device-1", "shell", "rm", "-f", "--",
+                         *[f"{RUNNER.DEVICE_DIR}/{name}" for name in RUNNER.DEVICE_CSV_NAMES]])
         for path in (self.output, self.samples, self.presents):
             row = read_rows(path)[0]
             self.assertEqual([row[key] for key in RUNNER.METADATA], ["1", "1", "run-1", "20261104"])
@@ -262,6 +280,41 @@ class PersistenceTests(unittest.TestCase):
             self.assertEqual(row["asset_sha256"], self.asset_hashes["effect"])
             self.assertNotIn(b"\r", path.read_bytes())
             self.assertTrue(path.read_bytes().endswith(b"\n"))
+
+    def test_device_cleanup_occurs_only_after_all_host_csvs_are_saved(self):
+        cleaned = []
+
+        def execute(argv, **kwargs):
+            if argv[3:5] == ["shell", "rm"]:
+                self.assertEqual(argv[5:], ["-f", "--", *[f"{RUNNER.DEVICE_DIR}/{name}" for name in RUNNER.DEVICE_CSV_NAMES]])
+                for path in (self.output, self.samples, self.presents):
+                    self.assertEqual(len(read_rows(path)), 1)
+                cleaned.append(argv)
+
+        self.command_mock.side_effect = execute
+        self.args.variant = "benchmark"
+        with mock.patch.object(RUNNER, "wait_done"), mock.patch.object(RUNNER, "read_remote_csv", side_effect=self.standard_remote):
+            self.run_plan()
+        self.assertEqual(len(cleaned), 1)
+
+    def test_host_persistence_failure_keeps_device_diagnostics(self):
+        with mock.patch.object(RUNNER, "wait_done"), mock.patch.object(RUNNER, "read_remote_csv", side_effect=self.standard_remote), \
+                mock.patch.object(RUNNER, "persist_csv", side_effect=OSError("host write failed")):
+            with self.assertRaisesRegex(OSError, "host write failed"):
+                self.run_plan()
+        self.assertFalse(any(call.args[0][3:5] == ["shell", "rm"] for call in self.command_mock.call_args_list))
+
+    def test_failed_cleanup_preserves_host_results_and_is_not_success(self):
+        def execute(argv, **kwargs):
+            if argv[3:5] == ["shell", "rm"]:
+                raise subprocess.CalledProcessError(1, argv)
+
+        self.command_mock.side_effect = execute
+        with mock.patch.object(RUNNER, "wait_done"), mock.patch.object(RUNNER, "read_remote_csv", side_effect=self.standard_remote):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.run_plan()
+        for path in (self.output, self.samples, self.presents):
+            self.assertEqual(len(read_rows(path)), 1)
 
     def test_benchmark_missing_metadata_fails_before_launch(self):
         self.args.variant = "benchmark"
@@ -299,6 +352,7 @@ class PersistenceTests(unittest.TestCase):
                     self.assertEqual(len(read_rows(self.output)), 1)
                     self.assertEqual(len(read_rows(self.samples)), 1)
                     self.assertEqual(len(read_rows(self.presents)), 1)
+                    self.assertFalse(any(call.args[0][3:5] == ["shell", "rm"] for call in self.command_mock.call_args_list))
 
     def test_allow_invalid_does_not_bypass_version_identity(self):
         self.args.variant = "benchmark"
@@ -314,7 +368,7 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(read_rows(self.output)[0]["valid"], "false")
         self.assertEqual(read_rows(self.output)[0]["bench_version"], "alpha02")
 
-    def test_legacy_debug_rows_are_not_labeled_alpha01(self):
+    def test_legacy_debug_rows_are_not_labeled_with_any_release(self):
         self.versions = None
 
         def remote(adb, name, optional=False):
@@ -330,6 +384,7 @@ class PersistenceTests(unittest.TestCase):
         for path in (self.output, self.samples):
             self.assertFalse(set(RUNNER.VERSION_FIELDS) & set(read_rows(path)[0]))
             self.assertNotIn("alpha01", path.read_text(encoding="utf-8"))
+            self.assertNotIn("1.0.0-alpha02", path.read_text(encoding="utf-8"))
 
     def test_benchmark_presents_is_mandatory_and_validated(self):
         self.args.variant = "benchmark"
@@ -459,7 +514,7 @@ class PersistenceTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 self.run_plan()
         self.assertEqual(read_rows(self.output)[0]["valid"], "false")
-        self.assertEqual(read_rows(self.output)[0]["asset"], "effect.ktx")
+        self.assertEqual(read_rows(self.output)[0]["asset"], "effect.prism")
         self.assertEqual(len(read_rows(self.samples)), 1)
 
     def test_force_stop_failure_does_not_launch_or_read_stale_files(self):
@@ -515,7 +570,7 @@ class PresentValidationTests(unittest.TestCase):
 
     def events(self, instances=(0, 0, 1, 1)):
         """创建逐实例有序的成功回调。 / Creates successful callbacks ordered within each player."""
-        return [{"asset": "effect.ktx", "count": "2", "instance": str(instance), "elapsed_ns": str(index + 1), "phase": "measure"}
+        return [{"asset": "effect.prism", "count": "2", "instance": str(instance), "elapsed_ns": str(index + 1), "phase": "measure"}
                 for index, instance in enumerate(instances)]
 
     def test_exact_frames_and_instance_coverage_pass(self):
@@ -567,12 +622,24 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 RUNNER.read_remote_csv(["adb", "-s", "serial"], "presents.csv", optional=True)
 
+    def test_device_cache_paths_are_allowlisted_for_reads_and_cleanup(self):
+        with mock.patch.object(RUNNER, "command") as command:
+            with self.assertRaisesRegex(ValueError, "Unknown benchmark CSV"):
+                RUNNER.read_remote_csv(["adb", "-s", "serial"], "../user.csv")
+            with mock.patch.object(RUNNER, "DEVICE_DIR", f"/sdcard/Android/data/{RUNNER.PACKAGE}/files"):
+                with self.assertRaisesRegex(RuntimeError, "unexpected device cache paths"):
+                    RUNNER.cleanup_remote_csv(["adb", "-s", "serial"])
+            with mock.patch.object(RUNNER, "DEVICE_CSV_NAMES", ("user.csv",)):
+                with self.assertRaisesRegex(RuntimeError, "unexpected device cache paths"):
+                    RUNNER.cleanup_remote_csv(["adb", "-s", "serial"])
+            command.assert_not_called()
+
     def test_mandatory_presents_uses_direct_exec_out_cat(self):
         raw = "asset,count,instance,elapsed_ns,phase\n"
         with mock.patch.object(RUNNER, "command", return_value=subprocess.CompletedProcess([], 0, raw)) as command:
             RUNNER.read_remote_csv(["adb", "-s", "serial"], "presents.csv")
         self.assertEqual(command.call_args.args[0], ["adb", "-s", "serial", "exec-out", "cat",
-                         f"/sdcard/Android/data/{RUNNER.PACKAGE}/files/presents.csv"])
+                         f"/sdcard/Android/data/{RUNNER.PACKAGE}/cache/presents.csv"])
 
     def test_shell_error_stdout_is_not_an_empty_successful_dataset(self):
         raw = "sh: if [ -f /sdcard/presents.csv ]; then cat /sdcard/presents.csv; fi: inaccessible or not found\n"
@@ -608,16 +675,33 @@ class BoundaryTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "no CSV header"):
                 RUNNER.read_remote_csv(["adb", "-s", "serial"], "bench.csv")
 
-    def test_apk_exact_stems_and_no_compress(self):
+    def test_apk_exact_prism_stems_and_no_compress(self):
         with tempfile.TemporaryDirectory() as temp:
             apk = Path(temp) / "test.apk"
             with zipfile.ZipFile(apk, "w") as archive:
-                archive.writestr("assets/effect-kap.ktx", "fixture", compress_type=zipfile.ZIP_STORED)
-                archive.writestr("assets/effect-vap.mp4", "fixture", compress_type=zipfile.ZIP_DEFLATED)
-            self.assertEqual(RUNNER.apk_assets(apk), {"effect-kap": "effect-kap.ktx", "effect-vap": "effect-vap.mp4"})
+                archive.writestr("assets/alpha-256-astc8x8.prism", "kap fixture", compress_type=zipfile.ZIP_STORED)
+                archive.writestr("assets/alpha-256-b1500.prism", "vap fixture", compress_type=zipfile.ZIP_STORED)
+                for suffix in ("ktx", "ktx2", "mp4"):
+                    archive.writestr(f"assets/legacy.{suffix}", "archive fixture", compress_type=zipfile.ZIP_DEFLATED)
+                archive.writestr("other/not-an-asset.prism", "fixture", compress_type=zipfile.ZIP_DEFLATED)
+            self.assertEqual(RUNNER.apk_assets(apk), {"alpha-256-astc8x8": "alpha-256-astc8x8.prism",
+                                                     "alpha-256-b1500": "alpha-256-b1500.prism"})
+            self.assertEqual(set(RUNNER.apk_asset_hashes(apk, ["alpha-256-astc8x8", "alpha-256-b1500"])),
+                             {"alpha-256-astc8x8", "alpha-256-b1500"})
+            with self.assertRaisesRegex(RuntimeError, "exactly one material"):
+                RUNNER.apk_asset_hashes(apk, ["legacy"])
             with zipfile.ZipFile(apk, "a") as archive:
-                archive.writestr("assets/compressed.ktx2", "fixture", compress_type=zipfile.ZIP_DEFLATED)
+                archive.writestr("assets/compressed.prism", "fixture", compress_type=zipfile.ZIP_DEFLATED)
             with self.assertRaisesRegex(RuntimeError, "noCompress"):
+                RUNNER.apk_assets(apk)
+
+    def test_duplicate_prism_stems_are_rejected_before_planning(self):
+        with tempfile.TemporaryDirectory() as temp:
+            apk = Path(temp) / "test.apk"
+            write_apk(apk)
+            with zipfile.ZipFile(apk, "a") as archive:
+                archive.writestr("assets/nested/effect.prism", "duplicate", compress_type=zipfile.ZIP_STORED)
+            with self.assertRaisesRegex(RuntimeError, "exactly one material"):
                 RUNNER.apk_assets(apk)
 
     def test_manifest_has_seed_args_order_and_apk_sha256(self):
@@ -627,14 +711,14 @@ class BoundaryTests(unittest.TestCase):
             path = Path(temp) / "nested" / "manifest.json"
             args = RUNNER.argument_parser().parse_args(["serial", "--seed", "42", "--isolate-scenarios", "--skip-build", "--variant", "benchmark"])
             plan = RUNNER.trial_plan(["exact-stem"], [1], 1, 42, True)
-            RUNNER.write_manifest(path, args, apk, ["exact-stem"], plan, ALPHA_VERSIONS)
+            RUNNER.write_manifest(path, args, apk, ["exact-stem"], plan, CURRENT_VERSIONS)
             result = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(result["seed"], 42)
             self.assertTrue(result["args"]["skip_build"])
             self.assertEqual(result["args"]["variant"], "benchmark")
             self.assertEqual(result["trials"], plan)
             self.assertEqual(result["apk_sha256"], hashlib.sha256(b"fixture APK").hexdigest())
-            self.assertEqual({key: result[key] for key in RUNNER.VERSION_FIELDS}, ALPHA_VERSIONS)
+            self.assertEqual({key: result[key] for key in RUNNER.VERSION_FIELDS}, CURRENT_VERSIONS)
 
     def test_manifest_legacy_versions_are_explicitly_unknown(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -654,13 +738,13 @@ class BoundaryTests(unittest.TestCase):
         self.addCleanup(stack.close)
         root = Path(temp) / "project"
         root.mkdir(exist_ok=True)
-        (root / "gradle.properties").write_text("version=alpha01\nbenchVersion=alpha01\n", encoding="utf-8")
+        (root / "gradle.properties").write_text(ROOT_PROPERTIES, encoding="utf-8")
         stack.enter_context(mock.patch.object(RUNNER, "ROOT", root))
         stack.enter_context(mock.patch.dict(os.environ, {"OUT": str(Path(temp) / "bench.csv"), "ASSETS": "exact-stem"}))
         build_args = ["--skip-build"] if skip_build else []
         stack.enter_context(mock.patch("sys.argv", ["run-android-bench.py", "serial", *build_args, *extra]))
-        stack.enter_context(mock.patch.object(RUNNER, "apk_assets", return_value={"exact-stem": "exact-stem.ktx"}))
-        stack.enter_context(mock.patch.object(RUNNER, "apk_versions", return_value=dict(ALPHA_VERSIONS)))
+        stack.enter_context(mock.patch.object(RUNNER, "apk_assets", return_value={"exact-stem": "exact-stem.prism"}))
+        stack.enter_context(mock.patch.object(RUNNER, "apk_versions", return_value=dict(CURRENT_VERSIONS)))
         stack.enter_context(mock.patch.object(RUNNER, "apk_asset_hashes", return_value={"exact-stem": hashlib.sha256(b"fixture").hexdigest()}))
         stack.enter_context(mock.patch.object(RUNNER, "write_manifest"))
         command = stack.enter_context(mock.patch.object(RUNNER, "command"))
@@ -675,7 +759,7 @@ class BoundaryTests(unittest.TestCase):
             apk = root / "bench-android/build/outputs/apk/benchmark/bench-android-benchmark.apk"
             apk.parent.mkdir(parents=True)
             write_apk(apk)
-            (root / "gradle.properties").write_text("version=alpha01\nbenchVersion=alpha01\n", encoding="utf-8")
+            (root / "gradle.properties").write_text(ROOT_PROPERTIES, encoding="utf-8")
             manifest = Path(temp) / "private" / "manifest.json"
             error = RuntimeError("bench.csv row 1 version mismatch")
             command, unused = self.main_mocks(temp, extra=["--variant", "benchmark", "--manifest", str(manifest)], failure=error)
@@ -684,16 +768,16 @@ class BoundaryTests(unittest.TestCase):
                     RUNNER.main()
             self.assertIs(raised.exception, error)
             result = json.loads(manifest.read_text(encoding="utf-8"))
-            self.assertEqual({key: result[key] for key in RUNNER.VERSION_FIELDS}, ALPHA_VERSIONS)
+            self.assertEqual({key: result[key] for key in RUNNER.VERSION_FIELDS}, CURRENT_VERSIONS)
             self.assertEqual(result["asset_sha256"], {"exact-stem": hashlib.sha256(b"fixture").hexdigest()})
             self.assertEqual(result["apk_sha256"], hashlib.sha256(apk.read_bytes()).hexdigest())
             self.assertEqual(len(result["trials"]), 1)
             self.assertEqual(command.call_args.args[0][-3:], ["am", "force-stop", RUNNER.PACKAGE])
 
     def test_main_benchmark_missing_or_stale_versions_fail_before_install(self):
-        for versions in (None, ALPHA_VERSIONS | {"app_version": "alpha00", "version_code": 0},
-                         ALPHA_VERSIONS | {"app_version": "alpha02", "version_code": 2},
-                         ALPHA_VERSIONS | {"bench_version": "alpha02"}):
+        for versions in (None, CURRENT_VERSIONS | {"app_version": "1.0.0-alpha01"},
+                         CURRENT_VERSIONS | {"app_version": "2.0.0"}, CURRENT_VERSIONS | {"version_code": 1},
+                         CURRENT_VERSIONS | {"bench_version": "2.0.0-beta01"}):
             with self.subTest(versions=versions), tempfile.TemporaryDirectory() as temp:
                 command, run = self.main_mocks(temp, extra=["--variant", "benchmark"])
                 with mock.patch.object(RUNNER, "apk_versions", return_value=versions) as read_versions:
@@ -704,7 +788,7 @@ class BoundaryTests(unittest.TestCase):
                 self.assertEqual(command.call_count, 1)
 
     def test_main_versioned_default_uses_baked_app_version_and_adjacent_manifest(self):
-        for versions in (ALPHA_VERSIONS, ALPHA_VERSIONS | {"app_version": "alpha02", "version_code": 2}):
+        for versions in (CURRENT_VERSIONS, CURRENT_VERSIONS | {"app_version": "2.0.0", "version_code": 3}):
             with self.subTest(versions=versions), tempfile.TemporaryDirectory() as temp:
                 unused, run = self.main_mocks(temp)
                 with mock.patch.dict(os.environ), mock.patch.object(Path, "home") as home, \
@@ -726,8 +810,8 @@ class BoundaryTests(unittest.TestCase):
     def test_main_new_versioned_run_does_not_overwrite_retained_baseline_or_run(self):
         with tempfile.TemporaryDirectory() as temp:
             unused, run = self.main_mocks(temp)
-            archive = Path(temp) / "project" / "benchmarks" / "alpha01"
-            baseline = archive / "data" / "raw.csv"
+            archive = Path(temp) / "project" / "benchmarks" / CURRENT_VERSIONS["app_version"]
+            baseline = Path(temp) / "project" / "benchmarks" / "alpha01" / "data" / "raw.csv"
             baseline.parent.mkdir(parents=True)
             baseline.write_text("retained baseline\n", encoding="utf-8")
             with mock.patch.dict(os.environ), mock.patch.object(RUNNER.uuid, "uuid4", side_effect=[
@@ -774,7 +858,7 @@ class BoundaryTests(unittest.TestCase):
             self.assertFalse((Path(temp) / "project" / "benchmarks").exists())
 
     def test_explicit_out_and_manifest_remain_honored_without_temp_allocation(self):
-        for versions in (ALPHA_VERSIONS, None):
+        for versions in (CURRENT_VERSIONS, None):
             with self.subTest(versions=versions), tempfile.TemporaryDirectory() as temp:
                 manifest_path = Path(temp) / "custom-manifest.json"
                 unused, run = self.main_mocks(temp, extra=["--manifest", str(manifest_path)])
@@ -810,7 +894,7 @@ class BoundaryTests(unittest.TestCase):
         for variant in ("debug", "benchmark"):
             with self.subTest(variant=variant), tempfile.TemporaryDirectory() as temp, contextlib.ExitStack() as stack:
                 command, unused = self.main_mocks(temp, extra=["--variant", variant], skip_build=False)
-                assets = stack.enter_context(mock.patch.object(RUNNER, "apk_assets", return_value={"exact-stem": "exact-stem.ktx"}))
+                assets = stack.enter_context(mock.patch.object(RUNNER, "apk_assets", return_value={"exact-stem": "exact-stem.prism"}))
                 RUNNER.main()
                 expected = RUNNER.ROOT / f"bench-android/build/outputs/apk/{variant}/bench-android-{variant}.apk"
                 assets.assert_called_once_with(expected)

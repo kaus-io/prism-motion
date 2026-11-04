@@ -1,74 +1,105 @@
 package com.zxhhyj.prism.motion.engine.vap
 
-import com.zxhhyj.prism.motion.PrismMotionSurface
+import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableIntStateOf
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import com.zxhhyj.prism.motion.PrismAndroidSources
+import com.zxhhyj.prism.motion.PrismMotionEngine
+import com.zxhhyj.prism.motion.PrismMotionEngineId
+import com.zxhhyj.prism.motion.PrismMotionFrameObservable
+import com.zxhhyj.prism.motion.PrismMotionFrameObserver
+import com.zxhhyj.prism.motion.PrismMotionResource
+import com.zxhhyj.prism.motion.PrismMotionSource
+import com.zxhhyj.prism.motion.PrismMotionSurface
 import com.zxhhyj.prism.motion.compose.PrismMotionRegistry
 import com.zxhhyj.prism.motion.compose.PrismMotionRenderer
 import com.zxhhyj.prism.motion.compose.PrismMotionState
-import com.zxhhyj.prism.motion.PrismMotionEngine
-import com.zxhhyj.prism.motion.PrismMotionEngineId
-import com.zxhhyj.prism.motion.PrismMotionResource
-import com.zxhhyj.prism.motion.PrismMotionFrameObservable
-import com.zxhhyj.prism.motion.PrismMotionFrameObserver
-import com.zxhhyj.prism.motion.PrismMotionSource
+import com.zxhhyj.prism.motion.format.PrismAlphaMode
+import com.zxhhyj.prism.motion.format.PrismContainer
+import com.zxhhyj.prism.motion.format.PrismPayloadKind
+import com.zxhhyj.prism.motion.integerPlaybackFps
+import com.zxhhyj.prism.motion.requireNativeMetadata
 import com.zxhhyj.vap.player.VapAnimation
 import com.zxhhyj.vap.player.VapAnimationState
 import com.zxhhyj.vap.player.VapComposition
-import com.zxhhyj.vap.player.VapCompositionSpec
 import com.zxhhyj.vap.player.VapPlayerStatus
+import com.zxhhyj.vap.player.VapSource
 import com.zxhhyj.vap.player.animateVapCompositionAsState
 import com.zxhhyj.vap.player.loadVapCompositionAsync
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
-/** VAP（MP4 + alpha，MediaCodec）作为统一门面的引擎实现。 */
-public class PrismMotionVapEngine : PrismMotionEngine {
+/**
+ * 只打开 Prism 中的 VAP 载荷，复用原版 MediaCodec 播放器与暖待机调度。
+ * Opens only Prism VAP payloads using the original MediaCodec player and warm-stage scheduler.
+ */
+public class PrismMotionVapEngine(context: Context) : PrismMotionEngine {
+    private val context = context.applicationContext
     private val loadMutex = Mutex()
-    private var cachedAsset: PrismMotionSource.Asset? = null
+    private var cachedAsset: VapSource? = null
     private var cachedComposition: VapComposition? = null
 
     override val id: PrismMotionEngineId = PrismMotionEngineId.Vap
 
-    override fun supports(source: PrismMotionSource): Boolean = when (source) {
-        is PrismMotionSource.Asset -> source.path.endsWith(MP4_SUFFIX, ignoreCase = true)
-        is PrismMotionSource.File -> source.path.endsWith(MP4_SUFFIX, ignoreCase = true)
-        is PrismMotionSource.Bytes -> true
+    /** 在 IO 上按容器载荷判断，不接受裸 MP4。 / Checks the container payload on IO, rejecting bare MP4. */
+    override suspend fun supports(source: PrismMotionSource): Boolean = withContext(Dispatchers.IO) {
+        PrismAndroidSources.supports(context, source, PrismPayloadKind.Vap)
     }
 
+    /** 校验外层声明后打开有界载荷，文件与资产不提取到临时文件。 / Validates and opens bounded payloads without extracting files or assets. */
     override suspend fun open(source: PrismMotionSource): PrismMotionResource {
-        val spec = when (source) {
-            is PrismMotionSource.Asset -> VapCompositionSpec.Asset(source.path)
-            is PrismMotionSource.File -> VapCompositionSpec.File(source.path)
-            is PrismMotionSource.Bytes -> VapCompositionSpec.Bytes(source.bytes)
+        val descriptor = withContext(Dispatchers.IO) { PrismAndroidSources.inspect(context, source) }
+        require(descriptor.kind == PrismPayloadKind.Vap) { "VAP requires a Prism video payload" }
+        val metadata = descriptor.metadata
+        metadata.integerPlaybackFps()
+        val vapSource = when (source) {
+            is PrismMotionSource.Asset -> VapSource.Region(
+                VapSource.Asset(source.path), descriptor.payloadOffset, descriptor.payloadLength,
+            )
+            is PrismMotionSource.File -> VapSource.Region(
+                VapSource.AbsolutePath(source.path), descriptor.payloadOffset, descriptor.payloadLength,
+            )
+            is PrismMotionSource.Bytes -> withContext(Dispatchers.IO) {
+                // 仅显式内存来源复制并校验载荷；SDK 接管副本，不再复制或落盘。
+                // Only explicit RAM sources copy and verify the payload; the SDK owns that copy without disk extraction.
+                VapSource.Bytes.wrap(PrismContainer.extractPayload(source.bytes, verifyPayload = true))
+            }
         }
         val composition = if (source is PrismMotionSource.Asset) {
-            // 同一个不可变资产共享解析结果，解码器和播放状态仍按实例独立。
-            // Share immutable asset metadata, not decoder sessions or playback state.
+            // 按原始资产判定缓存资格，键包含完整区间；解码器与播放状态仍按实例独立。
+            // Cache only original immutable assets by the full region; decoder sessions and playback state stay independent.
             loadMutex.withLock {
-                if (cachedAsset == source) cachedComposition!! else {
-                    loadVapCompositionAsync(spec).also {
-                        cachedAsset = source
+                if (cachedAsset == vapSource) cachedComposition!! else {
+                    loadVapCompositionAsync(vapSource).also {
+                        cachedAsset = vapSource
                         cachedComposition = it
                     }
                 }
             }
         } else {
-            loadVapCompositionAsync(spec)
+            // 可变文件每次重读，调用方内存也不跨打开共享解析结果。
+            // Reread mutable files and never share parsed caller RAM across opens.
+            loadVapCompositionAsync(vapSource)
+        }
+        val config = composition.config
+        metadata.requireNativeMetadata(config.width, config.height, config.totalFrames, config.fps)
+        // VAP 公开头部只声明 alpha 是否存在，不提供预乘标记。
+        // The public VAP header declares alpha presence, not premultiplication semantics.
+        require(config.hasAlpha == (metadata.alphaMode != PrismAlphaMode.Opaque)) {
+            "Prism alpha mode does not match video payload"
         }
         return VapAnimationResource(composition)
-    }
-
-    private companion object {
-        const val MP4_SUFFIX = ".mp4"
     }
 }
 
@@ -171,11 +202,14 @@ public object PrismMotionVapRenderer : PrismMotionRenderer {
     }
 }
 
-/** 便捷入口：只注册 VAP 一个引擎。 */
+/** 从当前 Android 上下文创建仅含 VAP 的注册表。 / Creates a VAP-only registry from the current Android context. */
 @Composable
-public fun rememberPrismMotionVapRegistry(): PrismMotionRegistry = remember {
-    PrismMotionRegistry(
-        engines = listOf(PrismMotionVapEngine()),
-        renderers = mapOf(PrismMotionEngineId.Vap to PrismMotionVapRenderer),
-    )
+public fun rememberPrismMotionVapRegistry(): PrismMotionRegistry {
+    val context = LocalContext.current.applicationContext
+    return remember(context) {
+        PrismMotionRegistry(
+            engines = listOf(PrismMotionVapEngine(context)),
+            renderers = mapOf(PrismMotionEngineId.Vap to PrismMotionVapRenderer),
+        )
+    }
 }

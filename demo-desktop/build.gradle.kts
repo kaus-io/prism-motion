@@ -1,5 +1,6 @@
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.file.Files
 import java.util.zip.CRC32
 import java.util.zip.DeflaterOutputStream
 
@@ -31,7 +32,7 @@ compose.desktop {
         jvmArgs += listOf("-Xmx3g")
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            // 安装器要求纯数字版本，产品仍使用 alpha 编号。 / Installers require numeric versions; the product retains alpha numbering.
+            // 安装器使用显式 Android 序号生成数字版本，产品保留 SemVer。 / Installers use explicit Android codes for numeric versions; the product retains SemVer.
             packageVersion = "1.0.${rootProject.extra["prismVersionCode"]}"
         }
     }
@@ -46,7 +47,7 @@ val demoDataDir = rootProject.layout.projectDirectory.dir("demo-data")
 tasks.register("generateDemoAssets") {
     group = "demo"
     description = "生成 demo-data 下的演示资产 / generates demo assets"
-    dependsOn(":prism-motion-cli:linkReleaseExecutableLinuxX64")
+    dependsOn(":prism-motion-cli:embedToolsLinux")
 
     val sizes = (providers.gradleProperty("demoSizes").getOrElse("128,256,512")).split(',').map { it.trim().toInt() }
     val frames = providers.gradleProperty("demoFrames").getOrElse("24").toInt()
@@ -61,23 +62,34 @@ tasks.register("generateDemoAssets") {
         check(cliFile.isFile) { "缺少 CLI：${cliFile.absolutePath}" }
         val outDir = demoDataDir.asFile.apply { mkdirs() }
 
-        for (size in sizes) {
-            for (variant in listOf("tr", "op")) {
-                val frameDir = File(rootProject.layout.buildDirectory.asFile.get(), "demo-frames/$variant-$size")
-                frameDir.deleteRecursively()
-                frameDir.mkdirs()
-                val name = if (variant == "tr") "alpha" else "opaque"
-                writeFrames(frameDir, size, frames, alpha = variant == "tr")
+        val frameRoot = Files.createTempDirectory("prism-motion-demo-frames-").toRealPath()
+        try {
+            for (size in sizes) {
+                for (variant in listOf("tr", "op")) {
+                    val frameDir = Files.createDirectory(frameRoot.resolve("$variant-$size")).toFile()
+                    val name = if (variant == "tr") "alpha" else "opaque"
+                    writeFrames(frameDir, size, frames, alpha = variant == "tr")
 
-                for (bitrate in bitrates) {
-                    execCli(cliFile, listOf("pack", "vap", "--frames", frameDir.absolutePath,
-                        "--out", File(outDir, "$name-$size-b$bitrate.mp4").absolutePath,
-                        "--fps", "30", "--bitrate", bitrate))
+                    for (bitrate in bitrates) {
+                        val output = File(outDir, "$name-$size-b$bitrate.prism")
+                        check(!output.exists()) { "拒绝覆盖现有资产 / Refusing to overwrite existing asset: ${output.absolutePath}" }
+                        execCli(cliFile, listOf("pack", "vap", "--frames", frameDir.absolutePath,
+                            "--out", output.absolutePath, "--fps", "30", "--bitrate", bitrate))
+                    }
+                    for (format in formats) {
+                        val output = File(outDir, "$name-$size-${format.replace("-", "")}.prism")
+                        check(!output.exists()) { "拒绝覆盖现有资产 / Refusing to overwrite existing asset: ${output.absolutePath}" }
+                        execCli(cliFile, listOf("pack", "kap", "--frames", frameDir.absolutePath,
+                            "--out", output.absolutePath, "--fps", "30", "--format", format))
+                    }
                 }
-                for (format in formats) {
-                    execCli(cliFile, listOf("pack", "kap", "--frames", frameDir.absolutePath,
-                        "--out", File(outDir, "$name-$size-${format.replace("-", "")}.ktx").absolutePath,
-                        "--fps", "30", "--format", format))
+            }
+        } finally {
+            check(frameRoot.toRealPath() == frameRoot) { "临时帧目录已重定向 / Temporary frame directory was redirected: $frameRoot" }
+            Files.walk(frameRoot).use { paths ->
+                paths.sorted(Comparator.reverseOrder()).forEach { path ->
+                    check(path.toAbsolutePath().normalize().startsWith(frameRoot))
+                    Files.delete(path)
                 }
             }
         }

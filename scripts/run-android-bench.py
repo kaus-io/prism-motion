@@ -19,10 +19,12 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "com.zxhhyj.prism.motion.bench.android"
+DEVICE_DIR = f"/sdcard/Android/data/{PACKAGE}/cache"
+DEVICE_CSV_NAMES = ("bench.csv", "samples.csv", "presents.csv")
 METADATA = ("repeat", "trial", "run_id", "seed")
 VERSION_FIELDS = ("app_version", "bench_version", "version_code")
 VERSION_ASSET = "assets/prism-bench-version.json"
-ALPHA_VERSION = re.compile(r"alpha(0[1-9]|[1-9][0-9]+)")
+SEMVER_VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)(?:0[1-9]|[1-9][0-9]))?")
 
 
 def command(argv, **kwargs):
@@ -79,7 +81,9 @@ def argument_parser():
                         help="allow completed valid=false scenarios; infrastructure errors still fail")
     parser.add_argument("--manifest", help="override manifest JSON path (default: beside CSV); records arguments, versions, trial order and APK SHA256")
     parser.add_argument("--expect-app-version", help="expected benchmark APK app version (default: root version property)")
-    parser.add_argument("--expect-bench-version", help="expected benchmark protocol version (default: root benchVersion property)")
+    parser.add_argument("--expect-bench-version", help="expected benchmark software version (default: root benchVersion property)")
+    parser.add_argument("--expect-version-code", type=positive_int,
+                        help="expected Android version code (default: root androidVersionCode property)")
     return parser
 
 
@@ -98,14 +102,19 @@ def trial_plan(assets, counts, repeats, seed, isolate_scenarios):
 
 
 def apk_assets(apk):
-    """检查 KAP 原样打包并返回精确资源名。 / Checks uncompressed KAP packaging and returns exact asset stems."""
+    """仅选择原样打包的 Prism 容器并保留精确资源名。 / Selects only stored Prism containers and preserves exact asset stems."""
     with zipfile.ZipFile(apk) as archive:
-        filenames = {Path(info.filename).stem: Path(info.filename).name for info in archive.infolist()
-                     if info.filename.startswith("assets/") and info.filename.endswith((".ktx", ".mp4"))}
-        compressed_ktx = [info.filename for info in archive.infolist()
-                          if info.filename.endswith((".ktx", ".ktx2")) and info.compress_type != zipfile.ZIP_STORED]
-        if compressed_ktx:
-            raise RuntimeError(f"KAP assets must use noCompress: {compressed_ktx}")
+        materials = [info for info in archive.infolist()
+                     if info.filename.startswith("assets/") and info.filename.endswith(".prism")]
+        compressed = [info.filename for info in materials if info.compress_type != zipfile.ZIP_STORED]
+        if compressed:
+            raise RuntimeError(f"Prism assets must use noCompress: {compressed}")
+        filenames = {}
+        for info in materials:
+            stem = Path(info.filename).stem
+            if stem in filenames:
+                raise RuntimeError(f"APK asset stem must identify exactly one material: {stem}")
+            filenames[stem] = Path(info.filename).name
     return filenames
 
 
@@ -115,7 +124,7 @@ def apk_asset_hashes(apk, selected):
     with zipfile.ZipFile(apk) as archive:
         for asset in selected:
             matches = [info for info in archive.infolist() if info.filename.startswith("assets/")
-                       and info.filename.endswith((".ktx", ".mp4")) and Path(info.filename).stem == asset]
+                       and info.filename.endswith(".prism") and Path(info.filename).stem == asset]
             if len(matches) != 1:
                 raise RuntimeError(f"APK asset stem must identify exactly one material: {asset}")
             digest = hashlib.sha256()
@@ -143,12 +152,11 @@ def apk_versions(apk, required=False):
     if not isinstance(versions, dict) or any(key not in versions for key in VERSION_FIELDS):
         raise RuntimeError(f"APK version asset must contain {VERSION_FIELDS}")
     for key in ("app_version", "bench_version"):
-        if not isinstance(versions[key], str) or not ALPHA_VERSION.fullmatch(versions[key]):
+        if not isinstance(versions[key], str) or not SEMVER_VERSION.fullmatch(versions[key]):
             raise RuntimeError(f"APK version asset has invalid {key}: {versions[key]!r}")
     code = versions["version_code"]
-    if (type(code) is not int or not 1 <= code <= 2100000000
-            or str(code) != versions["app_version"][5:].lstrip("0")):
-        raise RuntimeError(f"APK version_code does not match app_version: {versions}")
+    if type(code) is not int or not 1 <= code <= 2100000000:
+        raise RuntimeError(f"APK version_code must be a positive Android integer (1..2100000000): {code!r}")
     return {key: versions[key] for key in VERSION_FIELDS}
 
 
@@ -166,8 +174,13 @@ def check_expected_versions(args, versions):
     expected = {"app_version": args.expect_app_version or declared.get("version"),
                 "bench_version": args.expect_bench_version or declared.get("benchVersion")}
     for key, value in expected.items():
-        if not isinstance(value, str) or not ALPHA_VERSION.fullmatch(value):
+        if not isinstance(value, str) or not SEMVER_VERSION.fullmatch(value):
             raise RuntimeError(f"Missing or invalid expected {key}: {value!r}")
+    code = str(args.expect_version_code) if args.expect_version_code is not None else declared.get("androidVersionCode")
+    if not isinstance(code, str) or not re.fullmatch(r"[1-9][0-9]*", code) or not 1 <= int(code) <= 2100000000:
+        raise RuntimeError(f"Missing or invalid expected version_code: {code!r}")
+    expected["version_code"] = int(code)
+    for key, value in expected.items():
         if versions[key] != value:
             raise RuntimeError(f"Stale benchmark APK {key}: APK={versions[key]!r}; expected={value!r}; rebuild or explicitly select the expected version")
 
@@ -230,7 +243,9 @@ def wait_done(adb, run_id, launch, timeout):
 
 def read_remote_csv(adb, name, optional=False):
     """独立读取结果文件，可选文件缺失不掩盖 adb 错误。 / Reads each result independently; optional absence never masks adb errors."""
-    remote = f"/sdcard/Android/data/{PACKAGE}/files/{name}"
+    if name not in DEVICE_CSV_NAMES:
+        raise ValueError(f"Unknown benchmark CSV: {name}")
+    remote = f"{DEVICE_DIR}/{name}"
     if optional:
         script = f"if [ -f {shlex.quote(remote)} ]; then cat {shlex.quote(remote)}; fi"
         raw = command(adb + ["shell", script], stdout=subprocess.PIPE).stdout
@@ -358,6 +373,15 @@ def persist_csv(path, columns, rows):
         writer.writerows(rows)
 
 
+def cleanup_remote_csv(adb):
+    """仅在主机保存成功后删除三个已确认缓存文件。 / Deletes only the three confirmed cache files after successful host persistence."""
+    expected_dir = f"/sdcard/Android/data/{PACKAGE}/cache"
+    if DEVICE_DIR != expected_dir or DEVICE_CSV_NAMES != ("bench.csv", "samples.csv", "presents.csv"):
+        raise RuntimeError("Refusing to clean unexpected device cache paths")
+    paths = [f"{expected_dir}/{name}" for name in DEVICE_CSV_NAMES]
+    command(adb + ["shell", "rm", "-f", "--", *paths], stdout=subprocess.DEVNULL)
+
+
 def run_trials(adb, plan, filenames, args, output, trace_output, versions=None, asset_hashes=None):
     """每次试验后落盘；预期后端失败可继续，进程或采集异常保存后重抛。 / Persists every trial; expected backend failures continue, while process or collection errors are re-raised after saving."""
     if args.variant == "benchmark" and versions is None:
@@ -380,6 +404,7 @@ def run_trials(adb, plan, filenames, args, output, trace_output, versions=None, 
             for error in errors:
                 print(f"Trial error: {error}", flush=True)
             raise errors[0]
+        cleanup_remote_csv(adb)
         print(f"Completed trial {trial['trial']}: {len(datasets['bench'][1])} rows", flush=True)
     return results["bench"]["rows"]
 

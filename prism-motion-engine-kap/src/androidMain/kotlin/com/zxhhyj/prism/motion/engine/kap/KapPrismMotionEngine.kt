@@ -13,6 +13,11 @@ import com.zxhhyj.prism.motion.PrismMotionFrameObservable
 import com.zxhhyj.prism.motion.PrismMotionFrameObserver
 import com.zxhhyj.kap.compose.KtxAnimationListener
 import com.zxhhyj.prism.motion.PrismMotionSource
+import com.zxhhyj.prism.motion.PrismAndroidSources
+import com.zxhhyj.prism.motion.integerPlaybackFps
+import com.zxhhyj.prism.motion.requireNativeMetadata
+import com.zxhhyj.prism.motion.format.PrismAlphaMode
+import com.zxhhyj.prism.motion.format.PrismPayloadKind
 import com.zxhhyj.prism.motion.compose.PrismMotionRegistry
 import com.zxhhyj.prism.motion.compose.PrismMotionRenderer
 import com.zxhhyj.prism.motion.compose.PrismMotionState
@@ -23,8 +28,10 @@ import com.zxhhyj.kap.compose.KtxAnimation
 import com.zxhhyj.kap.compose.KtxAnimationState
 import com.zxhhyj.kap.android.KtxAnimationComposition
 import com.zxhhyj.kap.android.KtxPlayerStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * 复用原版 KAP 的流式 Vulkan 路径，不在门面层复制帧或替换调度器。
@@ -36,26 +43,27 @@ public class PrismMotionKapEngine(
 ) : PrismMotionEngine {
     private val context = context.applicationContext
     private val loadMutex = Mutex()
-    private var cachedAsset: KtxAnimationSource.Asset? = null
+    private var cachedAsset: KtxAnimationSource.Region? = null
     private var cachedComposition: KtxAnimationComposition? = null
 
     override val id: PrismMotionEngineId = PrismMotionEngineId.Kap
 
-    override fun supports(source: PrismMotionSource): Boolean = when (source) {
-        is PrismMotionSource.Asset -> source.path.endsWith(KTX_SUFFIX, ignoreCase = true) ||
-                source.path.endsWith(KTX_LEGACY_SUFFIX, ignoreCase = true)
-        is PrismMotionSource.File -> source.path.endsWith(KTX_SUFFIX, ignoreCase = true) ||
-                source.path.endsWith(KTX_LEGACY_SUFFIX, ignoreCase = true)
-        is PrismMotionSource.Bytes -> false
+    override suspend fun supports(source: PrismMotionSource): Boolean = withContext(Dispatchers.IO) {
+        PrismAndroidSources.supports(context, source, PrismPayloadKind.Ktx2, allowBytes = false)
     }
 
     override suspend fun open(source: PrismMotionSource): PrismMotionResource {
-        val ktxSource = when (source) {
+        val baseSource = when (source) {
             is PrismMotionSource.Asset -> KtxAnimationSource.Asset(source.path)
             is PrismMotionSource.File -> KtxAnimationSource.File(source.path)
             is PrismMotionSource.Bytes -> error("KAP embedded engine does not accept in-memory bytes")
         }
-        val composition = if (ktxSource is KtxAnimationSource.Asset) {
+        val descriptor = withContext(Dispatchers.IO) { PrismAndroidSources.inspect(context, source) }
+        require(descriptor.kind == PrismPayloadKind.Ktx2) { "KAP requires a Prism texture payload" }
+        val metadata = descriptor.metadata
+        metadata.integerPlaybackFps()
+        val ktxSource = KtxAnimationSource.Region(baseSource, descriptor.payloadOffset, descriptor.payloadLength)
+        val composition = if (source is PrismMotionSource.Asset) {
             // 同资产并发打开只解析一次头部；不缓存播放器/纹理，文件源仍每次重读。
             // Coalesce immutable asset headers, never players/textures; mutable files are reloaded.
             loadMutex.withLock {
@@ -69,12 +77,13 @@ public class PrismMotionKapEngine(
         } else {
             loadKtxAnimationAsync(context, ktxSource)
         }
+        metadata.requireNativeMetadata(composition.width, composition.height, composition.frameCount, composition.fps)
+        if (metadata.alphaMode != PrismAlphaMode.Opaque) {
+            require(composition.info.premultiplied == (metadata.alphaMode == PrismAlphaMode.Premultiplied)) {
+                "Prism alpha mode does not match texture payload"
+            }
+        }
         return KapAnimationResource(KtxAnimationState(composition, playbackMode))
-    }
-
-    private companion object {
-        const val KTX_SUFFIX = ".ktx"
-        const val KTX_LEGACY_SUFFIX = ".ktx2"
     }
 }
 

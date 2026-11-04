@@ -16,8 +16,9 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 LOADS = ("轻负载", "中负载", "重负载")
-PRIVATE_PROFILE = re.compile(r"^alpha-(\d+)-(astc8x8\.ktx|b1500\.mp4)$")
-VERSION_PATTERN = re.compile(r"(?:alpha|beta|rc)\d+(?:[._-]\d+)*|v?\d+(?:\.\d+){0,3}(?:[-+][A-Za-z0-9.]+)?")
+PRIVATE_PROFILE = re.compile(r"^alpha-(\d+)-(astc8x8\.(?:ktx|prism)|b1500\.(?:mp4|prism))$")
+VERSION_PATTERN = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)(?:0[1-9]|[1-9][0-9]))?")
+LEGACY_VERSIONS = frozenset({"alpha01"})
 VERSION_FIELDS = ("app_version", "bench_version", "version_code")
 REQUIRED = {"asset", "count", "valid", "error", "cpu_percent", "pss_median_mb"}
 METRICS = (
@@ -78,7 +79,7 @@ def read_trials(path):
             if count < 0 or not row["asset"]:
                 raise ValueError("私有场景标识无效。")
             match = PRIVATE_PROFILE.fullmatch(Path(row["asset"]).name)
-            row["_profile"] = (int(match[1]), "KAP" if match[2].endswith(".ktx") else "VAP") if match else None
+            row["_profile"] = (int(match[1]), "KAP" if match[2].startswith("astc8x8.") else "VAP") if match else None
             row["_count"] = count
             row["_valid"] = row["valid"].lower() in ("true", "1", "yes") and not row["error"]
             rows.append(row)
@@ -95,10 +96,13 @@ def version_label(rows):
     app, bench, code = next(iter(identities))
     if not any((app, bench, code)):
         return "未版本化"
-    if not all((app, bench, code)) or not code.isdigit():
+    if not all((app, bench, code)):
         raise ValueError("版本元数据不完整，不能归入已命名版本。")
-    if not VERSION_PATTERN.fullmatch(app):
-        raise ValueError("应用版本标签不符合公开版本格式。")
+    if not re.fullmatch(r"[1-9][0-9]*", code) or not 1 <= int(code) <= 2100000000:
+        raise ValueError("Android 版本序号必须为正整数且不越界。")
+    for label in (app, bench):
+        if label not in LEGACY_VERSIONS and not VERSION_PATTERN.fullmatch(label):
+            raise ValueError("应用或测量软件版本标签不符合公开版本格式。")
     return app
 
 

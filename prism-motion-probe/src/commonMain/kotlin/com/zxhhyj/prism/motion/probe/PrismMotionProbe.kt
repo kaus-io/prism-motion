@@ -1,128 +1,118 @@
 package com.zxhhyj.prism.motion.probe
 
 import com.zxhhyj.prism.motion.PrismMotionFormat
+import com.zxhhyj.prism.motion.format.PrismAlphaMode
+import com.zxhhyj.prism.motion.format.PrismContainer
+import com.zxhhyj.prism.motion.format.PrismMetadata
+import com.zxhhyj.prism.motion.format.PrismPayloadKind
+import com.zxhhyj.prism.motion.format.PrismSha256
 import com.zxhhyj.prism.motion.ktx.KtxReader
 
-/** 按容器魔数识别格式，再抽元数据；不做解码，JVM 与 Kotlin/Native 共用。 */
+/** 校验 .prism 外容器及原生载荷元数据，不解码视频。 / Validates .prism containers and native payload metadata without video decoding. */
 public object PrismMotionProbe {
-
-    /** 超过这个大小的文件不整体读入内存，直接报错。 */
+    /** 整文件读取上限；字节数组入口也执行相同限制。 / Whole-file limit, also enforced for byte-array input. */
     public const val MAX_BYTES: Long = 512L * 1024 * 1024
 
+    /** 从路径读取并校验一个有界资源。 / Reads and validates a bounded asset from a path. */
     public fun probe(path: String): ProbeResult {
         val size = PlatformIo.size(path)
-        require(size <= MAX_BYTES) {
-            "$path 有 $size 字节，超过 $MAX_BYTES 上限；请先用 ffmpeg/astcenc 压缩"
-        }
+        require(size in 0L..MAX_BYTES) { "$path exceeds the $MAX_BYTES byte probe limit" }
         return probe(PlatformIo.read(path), fileNameOf(path))
     }
 
+    /** 校验 CRC32、SHA-256、原生类型及可用的内部元数据。 / Checks CRC32, SHA-256, native kind and available inner metadata. */
     public fun probe(bytes: ByteArray, fileName: String): ProbeResult {
-        val sha256 = Sha256.hex(bytes)
-        val byMagic = sniff(bytes)
-        val bySuffix = PrismMotionFormat.ofFileName(fileName)
+        require(bytes.size.toLong() <= MAX_BYTES) { "Input exceeds the $MAX_BYTES byte probe limit" }
+        val hash = PrismSha256.hex(PrismSha256.digest(bytes))
         val issues = ArrayList<ProbeIssue>()
-
-        if (byMagic == null) {
-            issues += ProbeIssue(
-                ProbeSeverity.Error,
-                "unknown-container",
-                "既不是 ISO BMFF(MP4)，也不是 KTX2；后缀为 ${bySuffix?.suffix ?: "未知"}",
-            )
-        } else if (bySuffix != null && bySuffix != byMagic) {
-            issues += ProbeIssue(
-                ProbeSeverity.Warning,
-                "format-mismatch",
-                "后缀是 ${bySuffix.suffix}，内容实际是 ${byMagic.name.lowercase()}",
-            )
+        val suffix = fileName.substringAfterLast('.', "").lowercase()
+        if (suffix in setOf("mp4", "ktx", "ktx2")) {
+            issues += error("obsolete-format", "旧外部格式 .$suffix 已废弃，只接受 .prism / Obsolete external format; only .prism is supported")
+        } else if (PrismMotionFormat.ofFileName(fileName) != PrismMotionFormat.Prism) {
+            issues += error("unsupported-format", "资源必须使用 .prism 后缀 / Assets must use the .prism suffix")
         }
-
-        val format = byMagic ?: bySuffix
-        return when (byMagic) {
-            PrismMotionFormat.Vap -> {
-                val facts = Mp4Probe.probe(bytes)
-                issues += facts.issues
-                ProbeResult(
-                    fileName = fileName,
-                    format = format,
-                    bytes = bytes.size.toLong(),
-                    sha256 = sha256,
-                    width = facts.width,
-                    height = facts.height,
-                    durationMs = facts.durationMs,
-                    frameCount = facts.frameCount,
-                    fps = facts.fps,
-                    hasAlpha = facts.hasAlpha,
-                    metadata = facts.metadata,
-                    issues = issues,
-                )
-            }
-
-            PrismMotionFormat.Kap -> {
-                val facts = probeKtx2(bytes)
-                issues += facts.issues
-                ProbeResult(
-                    fileName = fileName,
-                    format = format,
-                    bytes = bytes.size.toLong(),
-                    sha256 = sha256,
-                    width = facts.width,
-                    height = facts.height,
-                    durationMs = facts.durationMs,
-                    frameCount = facts.frameCount,
-                    fps = facts.fps,
-                    metadata = facts.metadata,
-                    issues = issues,
-                )
-            }
-
-            null -> ProbeResult(
-                fileName = fileName,
-                format = format,
-                bytes = bytes.size.toLong(),
-                sha256 = sha256,
-                issues = issues,
+        if (!PrismContainer.isPrism(bytes)) {
+            val legacy = KtxReader.isKtx(bytes) || Mp4Probe.isVapLike(bytes)
+            issues += error(
+                if (legacy) "obsolete-container" else "unknown-container",
+                "缺少 PRISM 魔数；原生 MP4/KTX2 只能作为内嵌载荷 / Missing PRISM magic; native MP4/KTX2 is payload-only",
             )
+            return ProbeResult(fileName, null, bytes.size.toLong(), hash, issues = issues)
         }
-    }
-
-    private fun probeKtx2(bytes: ByteArray): KtxFacts {
-        if (!KtxReader.isKtx(bytes)) {
-            return KtxFacts(null, null, null, null, null, emptyMap(),
-                listOf(ProbeIssue(ProbeSeverity.Error, "not-ktx", "缺少 KTX2 魔数")),
-            )
+        val descriptor = try {
+            PrismContainer.verify(bytes)
+        } catch (failure: IllegalArgumentException) {
+            issues += error("bad-prism", failure.message ?: "Invalid .prism container")
+            return ProbeResult(fileName, PrismMotionFormat.Prism, bytes.size.toLong(), hash, issues = issues)
         }
-        return runCatching { KtxReader.read(bytes) }.fold(
-            onSuccess = { animation ->
-                val issues = if (animation.keyValues["anim.fps"] == null) {
-                    listOf(ProbeIssue(ProbeSeverity.Info, "missing-fps", "没有 anim.fps，运行时按 30 处理"))
+        val metadata = descriptor.metadata
+        val payload = bytes.copyOfRange(descriptor.payloadOffset.toInt(), bytes.size)
+        val nativeMetadata = when (descriptor.kind) {
+            PrismPayloadKind.Vap -> {
+                if (!Mp4Probe.isVapLike(payload) || KtxReader.isKtx(payload)) {
+                    issues += error("payload-kind-mismatch", "Vap 载荷不是原生 MP4 / Vap payload is not native MP4")
+                    emptyMap()
                 } else {
-                    emptyList()
+                    val facts = Mp4Probe.probe(payload)
+                    issues += facts.issues
+                    compare(metadata, facts.width, facts.height, facts.frameCount, facts.fps, facts.hasAlpha, null, issues)
+                    facts.metadata
                 }
-                KtxFacts(
-                    width = animation.width,
-                    height = animation.height,
-                    durationMs = animation.layers.size * 1000L / animation.fps,
-                    frameCount = animation.layers.size,
-                    fps = animation.fps,
-                    metadata = animation.keyValues,
-                    issues = issues,
-                )
-            },
-            onFailure = { error ->
-                KtxFacts(null, null, null, null, null, emptyMap(),
-                    listOf(ProbeIssue(ProbeSeverity.Error, "bad-ktx", error.message ?: "KTX2 解析失败")),
-                )
-            },
+            }
+            PrismPayloadKind.Ktx2 -> {
+                if (!KtxReader.isKtx(payload)) {
+                    issues += error("payload-kind-mismatch", "Ktx2 载荷缺少原生魔数 / Ktx2 payload lacks its native magic")
+                    emptyMap()
+                } else {
+                    val facts = Ktx2Probe.probe(payload)
+                    issues += facts.issues
+                    compare(metadata, facts.width, facts.height, facts.frameCount, facts.fps, facts.hasAlpha, facts.alphaMode, issues)
+                    facts.metadata
+                }
+            }
+        }
+        return ProbeResult(
+            fileName = fileName,
+            format = PrismMotionFormat.Prism,
+            bytes = bytes.size.toLong(),
+            sha256 = hash,
+            width = metadata.width,
+            height = metadata.height,
+            durationMs = metadata.durationMs,
+            frameCount = metadata.frameCount,
+            fps = if (metadata.fpsNumerator % metadata.fpsDenominator == 0) metadata.fpsNumerator / metadata.fpsDenominator else null,
+            hasAlpha = metadata.alphaMode != PrismAlphaMode.Opaque,
+            metadata = nativeMetadata,
+            issues = issues,
+            payloadKind = descriptor.kind,
+            fpsNumerator = metadata.fpsNumerator,
+            fpsDenominator = metadata.fpsDenominator,
+            alphaMode = metadata.alphaMode,
         )
     }
 
-    private fun sniff(bytes: ByteArray): PrismMotionFormat? = when {
-        KtxReader.isKtx(bytes) -> PrismMotionFormat.Kap
-        Mp4Probe.isVapLike(bytes) -> PrismMotionFormat.Vap
-        else -> null
+    private fun compare(
+        metadata: PrismMetadata,
+        width: Int?, height: Int?, frames: Int?, fps: Int?, hasAlpha: Boolean?, alphaMode: PrismAlphaMode?,
+        issues: MutableList<ProbeIssue>,
+    ) {
+        fun mismatch(field: String, inner: Any?, outer: Any) {
+            issues += error("metadata-mismatch", "$field: outer=$outer, native=$inner")
+        }
+        if (width != null && width != metadata.width) mismatch("width", width, metadata.width)
+        if (height != null && height != metadata.height) mismatch("height", height, metadata.height)
+        if (frames != null && frames != metadata.frameCount) mismatch("frameCount", frames, metadata.frameCount)
+        if (fps != null && fps.toLong() * metadata.fpsDenominator != metadata.fpsNumerator.toLong()) {
+            mismatch("fps", fps, "${metadata.fpsNumerator}/${metadata.fpsDenominator}")
+        }
+        if (hasAlpha != null && hasAlpha != (metadata.alphaMode != PrismAlphaMode.Opaque)) {
+            mismatch("hasAlpha", hasAlpha, metadata.alphaMode)
+        }
+        if (alphaMode != null && metadata.alphaMode != PrismAlphaMode.Opaque && alphaMode != metadata.alphaMode) {
+            mismatch("alphaMode", alphaMode, metadata.alphaMode)
+        }
     }
 
-    private fun fileNameOf(path: String): String =
-        path.substringAfterLast('/').substringAfterLast('\\')
+    private fun error(code: String, message: String): ProbeIssue = ProbeIssue(ProbeSeverity.Error, code, message)
+    private fun fileNameOf(path: String): String = path.substringAfterLast('/').substringAfterLast('\\')
 }

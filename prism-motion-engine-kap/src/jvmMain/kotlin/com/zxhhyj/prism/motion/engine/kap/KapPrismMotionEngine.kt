@@ -4,11 +4,15 @@ import com.zxhhyj.prism.motion.PrismMotionEngine
 import com.zxhhyj.prism.motion.PrismMotionEngineId
 import com.zxhhyj.prism.motion.PrismMotionResource
 import com.zxhhyj.prism.motion.PrismMotionSource
+import com.zxhhyj.prism.motion.PrismJvmSources
+import com.zxhhyj.prism.motion.integerPlaybackFps
+import com.zxhhyj.prism.motion.requireNativeMetadata
+import com.zxhhyj.prism.motion.format.PrismPayloadKind
+import com.zxhhyj.prism.motion.format.PrismAlphaMode
 import com.zxhhyj.prism.motion.ktx.KtxFormat
 import com.zxhhyj.prism.motion.ktx.KtxReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /** 解码后的一帧 RGBA 像素。 / One decoded RGBA frame. */
 internal class KtxFrame(val width: Int, val height: Int, val rgba: ByteArray)
@@ -29,28 +33,29 @@ public class PrismMotionKapEngine : PrismMotionEngine {
 
     override val id: PrismMotionEngineId = PrismMotionEngineId.Kap
 
-    override fun supports(source: PrismMotionSource): Boolean = when (source) {
-        is PrismMotionSource.Asset -> source.path.endsWith(KTX_SUFFIX, ignoreCase = true) ||
-                source.path.endsWith(KTX_LEGACY_SUFFIX, ignoreCase = true)
-        is PrismMotionSource.File -> source.path.endsWith(KTX_SUFFIX, ignoreCase = true) ||
-                source.path.endsWith(KTX_LEGACY_SUFFIX, ignoreCase = true)
-        is PrismMotionSource.Bytes -> true
+    override suspend fun supports(source: PrismMotionSource): Boolean = withContext(Dispatchers.IO) {
+        PrismJvmSources.supports(source, PrismPayloadKind.Ktx2)
     }
 
     override suspend fun open(source: PrismMotionSource): PrismMotionResource {
         val animation = withContext(Dispatchers.IO) {
-            val bytes = when (source) {
-                is PrismMotionSource.Asset -> error("KAP JVM 不支持 Android asset: ${source.path}")
-                is PrismMotionSource.File -> File(source.path).readBytes()
-                is PrismMotionSource.Bytes -> source.bytes
+            val payload = PrismJvmSources.payload(source)
+            require(payload.descriptor.kind == PrismPayloadKind.Ktx2) { "KAP requires a Prism texture payload" }
+            val metadata = payload.descriptor.metadata
+            metadata.integerPlaybackFps()
+            val parsed = KtxReader.read(payload.bytes)
+            metadata.requireNativeMetadata(parsed.width, parsed.height, parsed.layers.size, parsed.fps)
+            if (metadata.alphaMode != PrismAlphaMode.Opaque) {
+                require((parsed.keyValues["anim.premultiplied"] == "true") == (metadata.alphaMode == PrismAlphaMode.Premultiplied)) {
+                    "Prism alpha mode does not match texture payload"
+                }
             }
-            decode(bytes)
+            decode(parsed)
         }
         return KapJvmResource(animation)
     }
 
-    private fun decode(bytes: ByteArray): KtxAnimation {
-        val parsed = KtxReader.read(bytes)
+    private fun decode(parsed: com.zxhhyj.prism.motion.ktx.KtxAnimation): KtxAnimation {
         val frames = parsed.layers.mapIndexed { index, layer ->
             val rgba = when (parsed.format) {
                 KtxFormat.RGBA8 -> layer
@@ -65,8 +70,4 @@ public class PrismMotionKapEngine : PrismMotionEngine {
         return KtxAnimation(parsed.width, parsed.height, parsed.fps, frames)
     }
 
-    private companion object {
-        const val KTX_SUFFIX = ".ktx"
-        const val KTX_LEGACY_SUFFIX = ".ktx2"
-    }
 }

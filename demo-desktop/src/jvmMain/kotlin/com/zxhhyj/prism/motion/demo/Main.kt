@@ -51,14 +51,14 @@ fun demoRegistry(): PrismMotionRegistry = PrismMotionRegistry(
     ),
 )
 
-/** 演示资产：目录下的 mp4/ktx 文件。 / Demo assets: mp4/ktx files in the directory. */
+/** 演示资产：目录下的 Prism 资源。 / Demo assets: Prism resources in the directory. */
 fun demoAssets(): List<java.io.File> {
     val dir = run {
         System.getProperty("prism.demo.data")?.let { return@run java.io.File(it) }
         val local = java.io.File("demo-data")
         if (local.isDirectory) local else java.io.File("../demo-data")
     }
-    return dir.listFiles { file -> file.isFile && (file.name.endsWith(".mp4") || file.name.endsWith(".ktx")) }
+    return dir.listFiles { file -> file.isFile && file.name.endsWith(".prism") }
         .orEmpty()
         .sortedBy { it.name }
 }

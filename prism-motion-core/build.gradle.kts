@@ -34,8 +34,10 @@ kotlin {
     }
 
     sourceSets {
+        commonMain.dependencies { api(projects.prismMotionFormat) }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.core)
         }
     }
 }

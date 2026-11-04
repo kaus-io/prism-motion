@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import com.zxhhyj.prism.motion.PrismMotionEngine
 import com.zxhhyj.prism.motion.PrismMotionRequest
 import com.zxhhyj.prism.motion.PrismMotionResource
 import com.zxhhyj.prism.motion.PrismMotionStatus
@@ -29,18 +30,15 @@ public fun rememberPrismMotionState(
         mutableStateOf(PrismMotionState(request, null, null, null, PrismMotionStatus.Preparing))
     }
     LaunchedEffect(request, registry) {
-        val engine = registry.engines.engineFor(request)
-        if (engine == null) {
-            state = PrismMotionState(request, null, null, null, PrismMotionStatus.Failed(
-                IllegalStateException("no engine for ${request.source}"),
-            ))
-            return@LaunchedEffect
-        }
+        var engine: PrismMotionEngine? = null
         try {
-            ownPrismMotionResource(open = { engine.open(request.source) }) { resource ->
+            val selected = registry.engines.engineFor(request)
+                ?: error("No engine supports this Prism payload")
+            engine = selected
+            ownPrismMotionResource(open = { selected.open(request.source) }) { resource ->
                 resource.setRepeatCount(request.repeatCount)
                 if (request.autoPlay) resource.play() else resource.pause()
-                state = PrismMotionState(request, engine, resource, registry.rendererFor(engine.id), PrismMotionStatus.Ready)
+                state = PrismMotionState(request, selected, resource, registry.rendererFor(selected.id), PrismMotionStatus.Ready)
             }
         } catch (e: CancellationException) {
             throw e

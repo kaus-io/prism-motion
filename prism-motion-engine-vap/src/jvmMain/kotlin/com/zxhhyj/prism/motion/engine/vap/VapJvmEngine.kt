@@ -5,11 +5,15 @@ import com.zxhhyj.prism.motion.PrismMotionEngine
 import com.zxhhyj.prism.motion.PrismMotionEngineId
 import com.zxhhyj.prism.motion.PrismMotionResource
 import com.zxhhyj.prism.motion.PrismMotionSource
+import com.zxhhyj.prism.motion.PrismJvmSources
+import com.zxhhyj.prism.motion.integerPlaybackFps
+import com.zxhhyj.prism.motion.requireNativeMetadata
+import com.zxhhyj.prism.motion.format.PrismPayloadKind
+import com.zxhhyj.prism.motion.format.PrismAlphaMode
 import com.zxhhyj.prism.motion.compose.JvmFrameResource
 import com.zxhhyj.prism.motion.compose.rgbaToImageBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * VAP 引擎的 JVM 实现：自有 MP4 解封装 + OpenH264 解码（JNA），不再依赖 FFmpeg。
@@ -19,20 +23,20 @@ public class PrismMotionVapEngine : PrismMotionEngine {
 
     override val id: PrismMotionEngineId = PrismMotionEngineId.Vap
 
-    override fun supports(source: PrismMotionSource): Boolean = when (source) {
-        is PrismMotionSource.Asset -> source.path.endsWith(SUFFIX, ignoreCase = true)
-        is PrismMotionSource.File -> source.path.endsWith(SUFFIX, ignoreCase = true)
-        is PrismMotionSource.Bytes -> true
+    override suspend fun supports(source: PrismMotionSource): Boolean = withContext(Dispatchers.IO) {
+        PrismJvmSources.supports(source, PrismPayloadKind.Vap)
     }
 
     override suspend fun open(source: PrismMotionSource): PrismMotionResource {
         val (frames, config) = withContext(Dispatchers.IO) {
-            val bytes = when (source) {
-                is PrismMotionSource.Asset -> error("VAP JVM 不支持 Android asset: ${source.path}")
-                is PrismMotionSource.File -> File(source.path).readBytes()
-                is PrismMotionSource.Bytes -> source.bytes
-            }
-            val demuxed = VapMp4.demux(bytes)
+            val payload = PrismJvmSources.payload(source)
+            require(payload.descriptor.kind == PrismPayloadKind.Vap) { "VAP requires a Prism video payload" }
+            val metadata = payload.descriptor.metadata
+            metadata.integerPlaybackFps()
+            val demuxed = VapMp4.demux(payload.bytes)
+            val native = demuxed.config
+            metadata.requireNativeMetadata(native.width, native.height, native.frameCount, native.fps)
+            require(native.hasAlpha == (metadata.alphaMode != PrismAlphaMode.Opaque)) { "Prism alpha mode does not match video payload" }
             val i420Frames = VapDecodeNative.decodeAll(
                 demuxed.samples,
                 demuxed.config.videoWidth,
@@ -44,9 +48,6 @@ public class PrismMotionVapEngine : PrismMotionEngine {
         return VapJvmResource(frames, config.fps)
     }
 
-    private companion object {
-        const val SUFFIX = ".mp4"
-    }
 }
 
 /** JVM 侧的 VAP 资源：帧已在打开时解码，这里只负责按索引取位图。 / JVM VAP resource: frames are pre-decoded. */

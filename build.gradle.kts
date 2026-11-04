@@ -12,18 +12,20 @@ plugins {
     alias(libs.plugins.compose.multiplatform) apply false
 }
 
-// 产品与测量协议独立递增，拒绝非规范 alpha 版本。 / Product and measurement protocol advance independently with canonical alpha versions.
-val alphaVersionPattern = Regex("alpha(0[1-9]|[1-9][0-9]+)")
+// 产品与测量软件独立递增，Android 序号由单独属性声明。 / Product and benchmark software advance independently; Android codes use a separate property.
+val semVerPattern = Regex("(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)(?:0[1-9]|[1-9][0-9]))?")
 val prismVersionName = providers.gradleProperty("version").get()
-val prismVersionMatch = requireNotNull(alphaVersionPattern.matchEntire(prismVersionName)) {
-    "version must use canonical alpha numbering, starting at alpha01: $prismVersionName"
+require(semVerPattern.matches(prismVersionName)) {
+    "version must use MAJOR.MINOR.PATCH with optional -alphaNN/-betaNN/-rcNN (01..99): $prismVersionName"
 }
-val prismVersionCode = requireNotNull(prismVersionMatch.groupValues[1].toIntOrNull()?.takeIf { it in 1..2100000000 }) {
-    "version alpha sequence must fit Android versionCode (1..2100000000): $prismVersionName"
+val androidVersionCode = providers.gradleProperty("androidVersionCode").get()
+val prismVersionCode = requireNotNull(androidVersionCode.takeIf { Regex("[1-9][0-9]*").matches(it) }
+    ?.toIntOrNull()?.takeIf { it in 1..2100000000 }) {
+    "androidVersionCode must be an explicit positive integer (1..2100000000): $androidVersionCode"
 }
 val prismBenchVersion = providers.gradleProperty("benchVersion").get()
-require(alphaVersionPattern.matches(prismBenchVersion)) {
-    "benchVersion must use canonical alpha numbering, starting at alpha01: $prismBenchVersion"
+require(semVerPattern.matches(prismBenchVersion)) {
+    "benchVersion must use MAJOR.MINOR.PATCH with optional -alphaNN/-betaNN/-rcNN (01..99): $prismBenchVersion"
 }
 
 version = prismVersionName

@@ -1,0 +1,110 @@
+{
+  "seed": 0,
+  "args": {
+    "serial": "192.168.101.122:7575",
+    "skip_build": true,
+    "variant": "benchmark",
+    "counts": [
+      1,
+      8
+    ],
+    "measure_ms": 2000,
+    "warmup_ms": 500,
+    "timeout": 60,
+    "repeats": 2,
+    "seed": 0,
+    "isolate_scenarios": true,
+    "allow_invalid": false,
+    "manifest": null,
+    "expect_app_version": null,
+    "expect_bench_version": null,
+    "expect_version_code": null
+  },
+  "apk": "/home/zxhhyj/AndroidStudioProjects/kaus-workspace/projects/prism-motion/bench-android/build/outputs/apk/benchmark/bench-android-benchmark.apk",
+  "apk_sha256": "54dad33bd8d43b31e43eea0e7452fb9ed5cdfbfa43d2a84f167abd8dcff5b650",
+  "assets": [
+    "alpha-256-astc8x8",
+    "alpha-256-b1500"
+  ],
+  "asset_sha256": {
+    "alpha-256-astc8x8": "d56d92c1b8cad7897c44e3c2fefc312e36127a5c7717951c7d5fc01484338010",
+    "alpha-256-b1500": "59a02158e80fc59bfded312d10366482e576ac02a93cc2acb880164a51a0c3ba"
+  },
+  "trials": [
+    {
+      "repeat": 1,
+      "trial": 1,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        1
+      ],
+      "run_id": "2593251487a64cc3b148c6ac9d4118e1"
+    },
+    {
+      "repeat": 1,
+      "trial": 2,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        1
+      ],
+      "run_id": "2a3fc9dab2c94050a3e8e3ec66990a7b"
+    },
+    {
+      "repeat": 1,
+      "trial": 3,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        8
+      ],
+      "run_id": "81739f7e53504d6ab49df5f670469093"
+    },
+    {
+      "repeat": 1,
+      "trial": 4,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        8
+      ],
+      "run_id": "9b9aa261cc3a4676b6163a60127670ef"
+    },
+    {
+      "repeat": 2,
+      "trial": 5,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        1
+      ],
+      "run_id": "7f0bd75eb9bf437a80937b0c89b191e7"
+    },
+    {
+      "repeat": 2,
+      "trial": 6,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        8
+      ],
+      "run_id": "a85af7600f714ce1869ead00fcef19cb"
+    },
+    {
+      "repeat": 2,
+      "trial": 7,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        8
+      ],
+      "run_id": "13043ed214214e0da7ad0a16c48b7892"
+    },
+    {
+      "repeat": 2,
+      "trial": 8,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        1
+      ],
+      "run_id": "15b42bedf006455abe5f88f70c9fa23c"
+    }
+  ],
+  "app_version": "1.0.0-alpha02",
+  "bench_version": "1.0.0-alpha02",
+  "version_code": 2
+}

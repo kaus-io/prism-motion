@@ -20,7 +20,7 @@ SPEC.loader.exec_module(ANALYSIS)
 COLUMNS = ["asset", "count", "valid", "error", "cpu_percent", "pss_median_mb", "first_output_ms",
            "asset_bytes", "submitted_fps", "submit_p95_ms", "app_version", "bench_version", "version_code",
            "repeat", "trial", "run_id", "device", "source_configuration"]
-PRIVATE_TOKENS = ("astc", "rgba", "b1500", "alpha-256", ".ktx", ".mp4", "10000", "20000", "4000000",
+PRIVATE_TOKENS = ("astc", "rgba", "b1500", "alpha-256", ".ktx", ".mp4", ".prism", "10000", "20000", "4000000",
                   "2500", "private-hardware", "private-protocol", "configuration", "asset", "count",
                   "cpu_percent", "pss_median_mb", "submitted_fps", "version_code", "run_id", "256")
 CHART_EXPECTATIONS = {
@@ -33,14 +33,16 @@ CHART_EXPECTATIONS = {
 }
 
 
-def fixture_rows(versioned=True):
+def fixture_rows(versioned=True, historical=False):
     """构造三个私有负载及已知倍数，不把配置暴露到公开数据。 / Creates three private loads with known ratios for privacy assertions."""
     rows = []
     for index, count in enumerate((1, 8, 16)):
         for engine in ("KAP", "VAP"):
             for repeat in (1, 2, 3):
                 kap = engine == "KAP"
-                row = {"asset": "alpha-256-astc8x8.ktx" if kap else "alpha-256-b1500.mp4", "count": str(count),
+                suffix = ("ktx" if kap else "mp4") if historical else "prism"
+                stem = "alpha-256-astc8x8" if kap else "alpha-256-b1500"
+                row = {"asset": f"{stem}.{suffix}", "count": str(count),
                        "valid": "true", "error": "", "cpu_percent": str(10000 * (1 if kap else index + 2)),
                        "pss_median_mb": str(20000 * (1 if kap else (0.8, 0.9, 1.1)[index])),
                        "first_output_ms": str(2500 * (1 if kap else 2)), "asset_bytes": str(4000000 if kap else 200000),
@@ -48,7 +50,8 @@ def fixture_rows(versioned=True):
                        "repeat": str(repeat), "trial": str(repeat), "run_id": f"private-run-{repeat}",
                        "device": "private-hardware", "source_configuration": "private-configuration"}
                 if versioned:
-                    row.update(app_version="alpha01", bench_version="private-protocol-v1", version_code="101")
+                    row.update(app_version="alpha01" if historical else "1.0.0-alpha02",
+                               bench_version="alpha01" if historical else "1.0.0-alpha02", version_code="1" if historical else "2")
                 rows.append(row)
     baseline = dict(rows[0])
     baseline.update(count="0", cpu_percent="99999999", pss_median_mb="99999999")
@@ -84,11 +87,11 @@ class MultiplierTests(unittest.TestCase):
 
     def test_all_six_metrics_have_explicit_baselines_and_directions(self):
         public = self.public()
-        self.assertEqual(public["version"], "alpha01")
+        self.assertEqual(public["version"], "1.0.0-alpha02")
         self.assertEqual(public["loads"], ["轻负载", "中负载", "重负载"])
         self.assertEqual(len(public["metrics"]), 6)
         for key, metric in public["metrics"].items():
-            self.assertEqual([series["label"] for series in metric["series"]], ["KAP·alpha01", "VAP·alpha01"])
+            self.assertEqual([series["label"] for series in metric["series"]], ["KAP·1.0.0-alpha02", "VAP·1.0.0-alpha02"])
             self.assertEqual([point["multiplier"] for point in metric["series"][0]["points"]], [1, 1, 1])
             direction = "higher_is_better" if key == "frame_rate" else "lower_is_better"
             self.assertEqual(metric["direction"], direction)
@@ -107,9 +110,9 @@ class MultiplierTests(unittest.TestCase):
     def test_partial_failures_keep_valid_n_and_all_failures_are_missing(self):
         rows = fixture_rows()
         for row in rows:
-            if row["asset"].endswith(".mp4") and row["count"] == "8":
+            if row["asset"].endswith("-b1500.prism") and row["count"] == "8":
                 row.update(valid="false", error="private-native-error", cpu_percent="0")
-            if row["asset"].endswith(".mp4") and row["count"] == "16" and row["repeat"] == "3":
+            if row["asset"].endswith("-b1500.prism") and row["count"] == "16" and row["repeat"] == "3":
                 row.update(valid="false", error="private-native-error", cpu_percent="99999999")
         points = self.public(rows)["metrics"]["cpu_cost"]["series"][1]["points"]
         self.assertIsNone(points[1]["multiplier"])
@@ -123,7 +126,7 @@ class MultiplierTests(unittest.TestCase):
         rows = fixture_rows()
         for row in rows:
             if row["count"] == "1":
-                values = (100, 200, 300) if row["asset"].endswith(".ktx") else (100, 400, 900)
+                values = (100, 200, 300) if row["asset"].endswith("-astc8x8.prism") else (100, 400, 900)
                 row["cpu_percent"] = str(values[int(row["repeat"]) - 1])
         public = self.public(rows)
         point = public["metrics"]["cpu_cost"]["series"][1]["points"][0]
@@ -134,7 +137,7 @@ class MultiplierTests(unittest.TestCase):
     def test_zero_missing_or_failed_reference_is_never_a_fabricated_one(self):
         rows = fixture_rows()
         for row in rows:
-            if row["asset"].endswith(".ktx") and row["count"] == "16":
+            if row["asset"].endswith("-astc8x8.prism") and row["count"] == "16":
                 row["cpu_percent"] = "0"
         metric = self.public(rows)["metrics"]["cpu_cost"]
         self.assertIsNone(metric["series"][0]["points"][2]["multiplier"])
@@ -151,15 +154,55 @@ class MultiplierTests(unittest.TestCase):
         self.assertEqual(point["status"], "missing")
         json.dumps(point, allow_nan=False)
 
-    def test_legacy_is_unversioned_and_never_alpha01(self):
+    def test_legacy_unversioned_data_never_inherits_a_release_label(self):
         public = self.public(fixture_rows(versioned=False))
         self.assertEqual(public["version"], "未版本化")
         labels = [series["label"] for series in public["metrics"]["cpu_cost"]["series"]]
         self.assertEqual(labels, ["KAP·未版本化", "VAP·未版本化"])
+        self.assertNotIn("1.0.0-alpha02", json.dumps(public))
         self.assertNotIn("alpha01", json.dumps(public))
 
+    def test_historical_alpha01_ktx_mp4_remains_readable_without_relabeling(self):
+        historical = fixture_rows(historical=True)
+        write_input(self.input, historical)
+        original = self.input.read_bytes()
+        parsed = ANALYSIS.read_trials(self.input)
+        public = ANALYSIS.build_public(parsed)
+        self.assertEqual(public["version"], "alpha01")
+        self.assertEqual([series["label"] for series in public["metrics"]["cpu_cost"]["series"]], ["KAP·alpha01", "VAP·alpha01"])
+        self.assertEqual([point["multiplier"] for point in public["metrics"]["cpu_cost"]["series"][1]["points"]], [2, 3, 4])
+        self.assertEqual({row["app_version"] for row in parsed}, {"alpha01"})
+        self.assertEqual({row["bench_version"] for row in parsed}, {"alpha01"})
+        self.assertEqual({row["version_code"] for row in parsed}, {"1"})
+        self.assertEqual(self.input.read_bytes(), original)
+
+    def test_new_semver_and_independent_benchmark_versions_are_valid(self):
+        for version in ("0.0.0", "1.0.0-alpha01", "1.0.0-alpha99", "2.3.4-beta01", "2.3.4-rc99", "10.20.30"):
+            rows = fixture_rows()
+            for row in rows:
+                row.update(app_version=version, bench_version="3.2.1-rc02", version_code="100")
+            with self.subTest(version=version):
+                self.assertEqual(self.public(rows)["version"], version)
+
+    def test_noncanonical_new_versions_and_nonpositive_codes_are_rejected(self):
+        invalid = ("", "alpha02", "1.0", "1.0.0alpha01", "1.0.0-alpha00", "1.0.0-alpha1", "1.0.0-alpha001",
+                   "1.0.0-alpha100", "1.0.0-alpha.1", "1.0.0-ALPHA01", "1.0.0-SNAPSHOT", "01.0.0", "1.00.0", "1.0.00", "1.0.0+build")
+        for field in ("app_version", "bench_version"):
+            for value in invalid:
+                rows = fixture_rows()
+                for row in rows:
+                    row[field] = value
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    self.public(rows)
+        for code in ("0", "-1", "02", "+2", "2.0", "2100000001", "true", "٢"):
+            rows = fixture_rows()
+            for row in rows:
+                row["version_code"] = code
+            with self.subTest(code=code), self.assertRaisesRegex(ValueError, "正整数"):
+                self.public(rows)
+
     def test_mixed_app_protocol_or_build_versions_are_rejected(self):
-        for field, value in (("app_version", "alpha02"), ("bench_version", "another-protocol"), ("version_code", "102"), ("app_version", "")):
+        for field, value in (("app_version", "1.0.0-alpha03"), ("bench_version", "another-protocol"), ("version_code", "102"), ("app_version", "")):
             with self.subTest(field=field):
                 rows = fixture_rows()
                 rows[-1][field] = value
@@ -174,7 +217,7 @@ class MultiplierTests(unittest.TestCase):
     def test_private_profile_and_three_load_alignment_are_not_silently_merged(self):
         rows = fixture_rows()
         extra = dict(rows[0])
-        extra["asset"] = "alpha-128-astc8x8.ktx"
+        extra["asset"] = "alpha-128-astc8x8.prism"
         rows.append(extra)
         with self.assertRaisesRegex(ValueError, "单一"):
             self.public(rows)
@@ -233,26 +276,35 @@ class OutputPathTests(unittest.TestCase):
     def test_default_archive_uses_actual_validated_app_version(self):
         rows = fixture_rows()
         for row in rows:
-            row.update(app_version="alpha02", version_code="2")
+            row.update(app_version="1.0.0-alpha03", version_code="2")
         write_input(self.input, rows)
         with mock.patch.object(ANALYSIS.tempfile, "mkdtemp") as temporary, mock.patch.object(Path, "home") as home:
             public = ANALYSIS.analyze(self.input)
-        self.assertEqual(public["version"], "alpha02")
-        self.assert_chart_targets(self.project / "benchmarks" / "alpha02" / "charts")
-        self.assertFalse((self.project / "benchmarks" / "alpha01").exists())
+        self.assertEqual(public["version"], "1.0.0-alpha03")
+        self.assert_chart_targets(self.project / "benchmarks" / "1.0.0-alpha03" / "charts")
+        self.assertFalse((self.project / "benchmarks" / "1.0.0-alpha02").exists())
         temporary.assert_not_called()
         home.assert_not_called()
 
+    def test_historical_alpha01_defaults_keep_original_archive_name(self):
+        write_input(self.input, fixture_rows(historical=True))
+        before = self.input.read_bytes()
+        public = ANALYSIS.analyze(self.input)
+        self.assertEqual(public["version"], "alpha01")
+        self.assert_chart_targets(self.project / "benchmarks" / "alpha01" / "charts")
+        self.assertFalse((self.project / "benchmarks" / "1.0.0-alpha02").exists())
+        self.assertEqual(self.input.read_bytes(), before)
+
     def test_exact_versioned_project_charts_path_is_allowed_explicitly(self):
-        target = self.project / "benchmarks" / "alpha01" / "charts"
+        target = self.project / "benchmarks" / "1.0.0-alpha02" / "charts"
         ANALYSIS.analyze(self.input, target, write_json=True)
         self.assert_chart_targets(target)
-        self.assertEqual(json.loads((target / "ratios.json").read_text(encoding="utf-8"))["version"], "alpha01")
+        self.assertEqual(json.loads((target / "ratios.json").read_text(encoding="utf-8"))["version"], "1.0.0-alpha02")
 
     def test_root_other_and_mismatched_project_paths_are_rejected(self):
         for target in (self.project, self.project / "other", self.project / "benchmarks",
-                       self.project / "benchmarks" / "alpha01", self.project / "benchmarks" / "alpha02" / "charts",
-                       self.project / "benchmarks" / "alpha01" / "data", self.project / "benchmarks" / "alpha01" / "charts" / "nested"):
+                       self.project / "benchmarks" / "1.0.0-alpha02", self.project / "benchmarks" / "1.0.0-alpha03" / "charts",
+                       self.project / "benchmarks" / "1.0.0-alpha02" / "data", self.project / "benchmarks" / "1.0.0-alpha02" / "charts" / "nested"):
             with self.subTest(target=target), self.assertRaisesRegex(ValueError, "实际应用版本"):
                 ANALYSIS.analyze(self.input, target)
         self.plot.assert_not_called()
@@ -276,7 +328,7 @@ class OutputPathTests(unittest.TestCase):
 
     def test_legacy_cannot_be_archived_in_any_project_version(self):
         write_input(self.input, fixture_rows(versioned=False))
-        for label in ("alpha01", "unversioned", "未版本化"):
+        for label in ("alpha01", "1.0.0-alpha02", "unversioned", "未版本化"):
             with self.subTest(label=label), self.assertRaisesRegex(ValueError, "实际应用版本"):
                 ANALYSIS.analyze(self.input, self.project / "benchmarks" / label / "charts")
         self.plot.assert_not_called()
@@ -295,7 +347,7 @@ class OutputPathTests(unittest.TestCase):
             home.assert_not_called()
 
     def test_versioned_archive_keeps_private_file_and_json_guards(self):
-        target = self.project / "benchmarks" / "alpha01" / "charts"
+        target = self.project / "benchmarks" / "1.0.0-alpha02" / "charts"
         target.mkdir(parents=True)
         private = target / "private.csv"
         private.write_text("private", encoding="utf-8")
@@ -313,9 +365,9 @@ class OutputPathTests(unittest.TestCase):
         self.plot.assert_not_called()
 
     def test_other_project_aliases_cannot_bypass_the_exact_version_path(self):
-        target = self.project / "benchmarks" / "alpha01" / "charts"
+        target = self.project / "benchmarks" / "1.0.0-alpha02" / "charts"
         target.mkdir(parents=True)
-        wrong_version = self.project / "benchmarks" / "alpha02" / "charts"
+        wrong_version = self.project / "benchmarks" / "1.0.0-alpha03" / "charts"
         wrong_version.parent.mkdir()
         wrong_version.symlink_to(target, target_is_directory=True)
         external = self.root / "external"
@@ -328,7 +380,7 @@ class OutputPathTests(unittest.TestCase):
         self.plot.assert_not_called()
 
     def test_versioned_symlink_cannot_redirect_to_another_project_path(self):
-        target = self.project / "benchmarks" / "alpha01" / "charts"
+        target = self.project / "benchmarks" / "1.0.0-alpha02" / "charts"
         target.parent.mkdir(parents=True)
         private = self.project / "private"
         private.mkdir()
@@ -369,7 +421,7 @@ class PublicChartTests(unittest.TestCase):
         captured = []
         original_input = self.input.read_bytes()
         for row in self.rows:
-            if row["count"] == "16" and row["asset"].endswith(".mp4") and row["repeat"] == "3":
+            if row["count"] == "16" and row["asset"].endswith("-b1500.prism") and row["repeat"] == "3":
                 row.update(valid="false", error="private-native-error")
         write_input(self.input, self.rows)
         original_input = self.input.read_bytes()
@@ -384,7 +436,7 @@ class PublicChartTests(unittest.TestCase):
             self.assertIn(title + "倍数对比", [text.get_text() for text in figure.texts])
             self.assertEqual([tick.get_text() for tick in axis.get_xticklabels()], list(ANALYSIS.LOADS))
             self.assertEqual(list(axis.lines[0].get_ydata()), [1, 1, 1])
-            self.assertEqual([text.get_text() for text in figure.legends[0].texts], ["KAP·alpha01", "VAP·alpha01"])
+            self.assertEqual([text.get_text() for text in figure.legends[0].texts], ["KAP·1.0.0-alpha02", "VAP·1.0.0-alpha02"])
             texts = "\n".join(item.get_text() for item in figure.findobj(match=Text))
             for token in PRIVATE_TOKENS + ("private-native-error",):
                 self.assertNotIn(token.lower(), texts.lower())
@@ -426,7 +478,7 @@ class PublicChartTests(unittest.TestCase):
         original_savefig = Figure.savefig
         captured = []
         for row in self.rows:
-            if row["count"] == "16" and row["asset"].endswith(".mp4"):
+            if row["count"] == "16" and row["asset"].endswith("-b1500.prism"):
                 row.update(valid="false", error="private-native-error", cpu_percent="0", pss_median_mb="0")
         write_input(self.input, self.rows)
 

@@ -1,157 +1,192 @@
 package com.zxhhyj.prism.motion.probe
 
 import com.zxhhyj.prism.motion.PrismMotionFormat
+import com.zxhhyj.prism.motion.format.Bytes
+import com.zxhhyj.prism.motion.format.Mp4
+import com.zxhhyj.prism.motion.format.PrismAlphaMode
+import com.zxhhyj.prism.motion.format.PrismContainer
+import com.zxhhyj.prism.motion.format.PrismMetadata
+import com.zxhhyj.prism.motion.format.PrismPayloadKind
+import com.zxhhyj.prism.motion.ktx.Ktx
+import com.zxhhyj.prism.motion.ktx.KtxFormat
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/** 只接受 .prism，并核对完整原生载荷。 / Accepts only .prism and cross-checks complete native payloads. */
 class PrismMotionProbeTest {
+    private val vapMetadata = PrismMetadata(100, 200, 60, 30, 1, PrismAlphaMode.Premultiplied)
+    private val ktxMetadata = PrismMetadata(8, 4, 2, 24, 1, PrismAlphaMode.Straight)
 
     @Test
-    fun readsVapMetadataFromTheVapcBox() {
-        val result = PrismMotionProbe.probe(vapFile(), "clip.mp4")
-
-        assertEquals(PrismMotionFormat.Vap, result.format)
+    fun readsVapOuterMetadataAndPreservesNativePayload() {
+        val native = vapFile()
+        val bytes = PrismContainer.write(vapMetadata, PrismPayloadKind.Vap, native)
+        val result = PrismMotionProbe.probe(bytes, "clip.prism")
+        assertEquals(PrismMotionFormat.Prism, result.format)
+        assertEquals(PrismPayloadKind.Vap, result.payloadKind)
         assertEquals(100, result.width)
         assertEquals(200, result.height)
         assertEquals(60, result.frameCount)
         assertEquals(30, result.fps)
+        assertEquals(30, result.fpsNumerator)
+        assertEquals(1, result.fpsDenominator)
         assertEquals(2_000L, result.durationMs)
         assertEquals(true, result.hasAlpha)
-        assertTrue(result.ok)
+        assertEquals(PrismAlphaMode.Premultiplied, result.alphaMode)
+        assertTrue(result.ok, result.issues.toString())
+        assertContentEquals(native, PrismContainer.extractPayload(bytes, true))
     }
 
     @Test
-    fun plainMp4IsAllowedButFlagged() {
-        val result = PrismMotionProbe.probe(mp4(FileInfo(width = 64, height = 32, durationMs = 500)), "plain.mp4")
-
-        assertEquals(PrismMotionFormat.Vap, result.format)
-        assertEquals(64, result.width)
-        assertEquals(32, result.height)
-        assertEquals(500L, result.durationMs)
-        assertTrue(result.ok, "普通 MP4 只是警告，不应判失败")
-        assertTrue(result.issues.any { it.code == "missing-vapc" })
+    fun readsKtxOuterMetadataAndPreservesNativePayload() {
+        val native = ktxFile()
+        val bytes = PrismContainer.write(ktxMetadata, PrismPayloadKind.Ktx2, native)
+        val result = PrismMotionProbe.probe(bytes, "clip.PRISM")
+        assertEquals(PrismMotionFormat.Prism, result.format)
+        assertEquals(PrismPayloadKind.Ktx2, result.payloadKind)
+        assertEquals(8, result.width)
+        assertEquals(4, result.height)
+        assertEquals(2, result.frameCount)
+        assertEquals(24, result.fps)
+        assertEquals(83L, result.durationMs)
+        assertTrue(result.ok, result.issues.toString())
+        assertContentEquals(native, PrismContainer.extractPayload(bytes, true))
     }
 
     @Test
-    fun readsKapMetadataFromTheKtx2KeyValues() {
-        val result = PrismMotionProbe.probe(ktxBytes(width = 320, height = 240, layers = 10, fps = 30), "clip.ktx")
-
-        assertEquals(PrismMotionFormat.Kap, result.format)
-        assertEquals(320, result.width)
-        assertEquals(240, result.height)
-        assertEquals(10, result.frameCount)
-        assertEquals(30, result.fps)
-        assertEquals(333L, result.durationMs)
-        assertTrue(result.ok)
+    fun rejectsAllOldExternalFormatsAndDoesNotInferFormatFromSuffix() {
+        for ((native, fileName) in listOf(vapFile() to "clip.mp4", ktxFile() to "clip.ktx", ktxFile() to "clip.ktx2")) {
+            val result = PrismMotionProbe.probe(native, fileName)
+            assertNull(result.format)
+            assertFalse(result.ok)
+            assertTrue(result.issues.any { it.code == "obsolete-format" })
+            assertTrue(result.issues.any { it.code == "obsolete-container" })
+        }
+        val misnamedNative = PrismMotionProbe.probe(vapFile(), "clip.prism")
+        assertNull(misnamedNative.format)
+        assertFalse(misnamedNative.ok)
+        val misnamedPrism = PrismMotionProbe.probe(PrismContainer.write(ktxMetadata, PrismPayloadKind.Ktx2, ktxFile()), "clip.mp4")
+        assertEquals(PrismMotionFormat.Prism, misnamedPrism.format)
+        assertFalse(misnamedPrism.ok)
+        assertTrue(misnamedPrism.issues.any { it.code == "obsolete-format" })
     }
 
     @Test
-    fun unknownContainerIsAnError() {
-        val result = PrismMotionProbe.probe("not an animation".encodeToByteArray(), "a.gif")
-
+    fun unknownContainerIsAnErrorEvenWithPrismSuffix() {
+        val result = PrismMotionProbe.probe("not an animation".encodeToByteArray(), "a.prism")
         assertNull(result.format)
         assertFalse(result.ok)
         assertTrue(result.issues.any { it.code == "unknown-container" })
     }
 
     @Test
-    fun suffixThatDisagreesWithContentOnlyWarns() {
-        val result = PrismMotionProbe.probe(ktxBytes(8, 8, 2, 30), "misnamed.mp4")
-
-        assertEquals(PrismMotionFormat.Kap, result.format)
-        assertTrue(result.ok)
-        assertTrue(result.issues.any { it.code == "format-mismatch" })
+    fun rejectsNativeKindMismatchInBothDirections() {
+        for ((kind, native) in listOf(PrismPayloadKind.Vap to ktxFile(), PrismPayloadKind.Ktx2 to vapFile())) {
+            val result = PrismMotionProbe.probe(PrismContainer.write(ktxMetadata, kind, native), "a.prism")
+            assertEquals(kind, result.payloadKind)
+            assertFalse(result.ok)
+            assertTrue(result.issues.any { it.code == "payload-kind-mismatch" })
+        }
     }
 
-    // ---- fixtures ------------------------------------------------------
+    @Test
+    fun reportsInnerMetadataMismatchWithoutOverridingOuterValues() {
+        for (outer in listOf(
+            ktxMetadata.copy(width = 9), ktxMetadata.copy(height = 5), ktxMetadata.copy(frameCount = 3),
+            ktxMetadata.copy(fpsNumerator = 25), ktxMetadata.copy(alphaMode = PrismAlphaMode.Opaque),
+            ktxMetadata.copy(alphaMode = PrismAlphaMode.Premultiplied),
+        )) {
+            val result = PrismMotionProbe.probe(PrismContainer.write(outer, PrismPayloadKind.Ktx2, ktxFile()), "a.prism")
+            assertEquals(outer.width, result.width)
+            assertEquals(outer.height, result.height)
+            assertEquals(outer.frameCount, result.frameCount)
+            assertEquals(outer.durationMs, result.durationMs)
+            assertEquals(outer.alphaMode, result.alphaMode)
+            assertFalse(result.ok)
+            assertTrue(result.issues.any { it.code == "metadata-mismatch" }, result.issues.toString())
+        }
+        val vap = PrismMotionProbe.probe(PrismContainer.write(vapMetadata.copy(width = 99), PrismPayloadKind.Vap, vapFile()), "a.prism")
+        assertFalse(vap.ok)
+        assertEquals(99, vap.width)
+        assertTrue(vap.issues.any { it.code == "metadata-mismatch" })
+    }
 
-    private data class FileInfo(val width: Int, val height: Int, val durationMs: Long)
+    @Test
+    fun retainsRationalFpsWhenNativeTimingIsAbsentAndRejectsContradictoryTiming() {
+        val outer = ktxMetadata.copy(fpsNumerator = 30_000, fpsDenominator = 1_001)
+        val result = PrismMotionProbe.probe(PrismContainer.write(outer, PrismPayloadKind.Ktx2, ktxFile(fps = null)), "a.prism")
+        assertNull(result.fps)
+        assertEquals(30_000, result.fpsNumerator)
+        assertEquals(1_001, result.fpsDenominator)
+        assertEquals(66L, result.durationMs)
+        assertTrue(result.ok, result.issues.toString())
+        val mismatch = PrismMotionProbe.probe(PrismContainer.write(outer, PrismPayloadKind.Ktx2, ktxFile(fps = 30)), "a.prism")
+        assertFalse(mismatch.ok)
+        assertTrue(mismatch.issues.any { it.code == "metadata-mismatch" })
+    }
+
+    @Test
+    fun verifiesCrcAndShaAndNeverFallsBackToNativeParsing() {
+        val bytes = PrismContainer.write(ktxMetadata, PrismPayloadKind.Ktx2, ktxFile())
+        for (offset in listOf(68, 152, bytes.lastIndex)) {
+            val altered = bytes.copyOf().also { it[offset] = (it[offset].toInt() xor 1).toByte() }
+            val result = PrismMotionProbe.probe(altered, "a.prism")
+            assertEquals(PrismMotionFormat.Prism, result.format)
+            assertNull(result.width)
+            assertNull(result.payloadKind)
+            assertFalse(result.ok)
+            assertTrue(result.issues.any { it.code == "bad-prism" })
+        }
+        for (size in listOf(8, 191, 192, 4096, bytes.lastIndex)) {
+            val result = PrismMotionProbe.probe(bytes.copyOf(size), "a.prism")
+            assertFalse(result.ok)
+            assertTrue(result.issues.any { it.code == "bad-prism" })
+        }
+    }
+
+    @Test
+    fun rejectsMalformedNativeContainersWithValidOuterChecksums() {
+        val native = ktxFile()
+        for ((offset, value) in listOf(32 to 0L, 80 to Long.MIN_VALUE, 88 to Long.MAX_VALUE)) {
+            val malformed = native.copyOf()
+            if (offset == 32) Bytes.putU32le(malformed, offset, value.toInt()) else Bytes.putU64le(malformed, offset, value)
+            val result = PrismMotionProbe.probe(PrismContainer.write(ktxMetadata, PrismPayloadKind.Ktx2, malformed), "a.prism")
+            assertFalse(result.ok)
+            assertTrue(result.issues.any { it.code == "bad-ktx" })
+        }
+        val plainMp4 = Mp4.box("ftyp", "isom".encodeToByteArray()) + Mp4.box("moov", byteArrayOf())
+        val result = PrismMotionProbe.probe(PrismContainer.write(vapMetadata, PrismPayloadKind.Vap, plainMp4), "a.prism")
+        assertFalse(result.ok)
+        assertTrue(result.issues.any { it.code == "bad-mp4" })
+    }
+
+    @Test
+    fun checksOpaqueAndPremultipliedRgbaMetadataAgainstNativePixels() {
+        for (alpha in PrismAlphaMode.entries) {
+            val native = ktxFile(opaque = alpha == PrismAlphaMode.Opaque, premultiplied = alpha == PrismAlphaMode.Premultiplied)
+            val result = PrismMotionProbe.probe(PrismContainer.write(ktxMetadata.copy(alphaMode = alpha), PrismPayloadKind.Ktx2, native), "a.prism")
+            assertTrue(result.ok, result.issues.toString())
+            assertEquals(alpha != PrismAlphaMode.Opaque, result.hasAlpha)
+        }
+    }
 
     private fun vapFile(): ByteArray {
         val json = """{"info":{"v":3,"f":60,"w":100,"h":200,"videoW":100,"videoH":400,"fps":30,"hasAlpha":true}}"""
-        return mp4(FileInfo(100, 200, 1_000)) + box("vapc", json.encodeToByteArray())
+        val tkhd = ByteArray(84)
+        Bytes.putU32be(tkhd, 76, 100 * 65_536)
+        Bytes.putU32be(tkhd, 80, 400 * 65_536)
+        return Mp4.box("ftyp", "isom".encodeToByteArray()) +
+            Mp4.box("moov", Mp4.box("trak", Mp4.box("tkhd", tkhd))) + Mp4.box("vapc", json.encodeToByteArray())
     }
 
-    private fun mp4(info: FileInfo): ByteArray {
-        val timescale = 1_000
-        val mvhd = ByteArray(100)
-        putU32(mvhd, 12, timescale)
-        putU32(mvhd, 16, info.durationMs.toInt())
-        val tkhd = ByteArray(92)
-        putU32(tkhd, 76, info.width * 65_536)
-        putU32(tkhd, 80, info.height * 65_536)
-        val moov = box("moov", box("mvhd", mvhd) + box("trak", box("tkhd", tkhd)))
-        return box("ftyp", "isom".encodeToByteArray()) + moov
-    }
-
-    private fun ktxBytes(width: Int, height: Int, layers: Int, fps: Int): ByteArray {
-        val header = ByteArray(104)
-        val magic = byteArrayOf(
-            0xAB.toByte(), 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30,
-            0xBB.toByte(), 0x0D, 0x0A, 0x1A, 0x0A,
-        )
-        magic.copyInto(header)
-        putU32le(header, 12, 25)
-        putU32le(header, 20, width)
-        putU32le(header, 24, height)
-        putU32le(header, 32, layers)
-        putU32le(header, 36, 1)
-        putU32le(header, 40, 1)
-        val kv = buildKeyValues(mapOf("anim.fps" to fps.toString(), "anim.loop" to "true"))
-        val kvdOffset = 104
-        val levelOffset = ((kvdOffset + kv.size + 3) / 4) * 4
-        val layerBytes = width * height * 4
-        putU32le(header, 56, kvdOffset)
-        putU32le(header, 60, kv.size)
-        putU64le(header, 80, levelOffset.toLong())
-        putU64le(header, 88, (layerBytes * layers).toLong())
-        putU64le(header, 96, (layerBytes * layers).toLong())
-        val out = ByteArray(levelOffset + layerBytes * layers)
-        header.copyInto(out, 0)
-        kv.copyInto(out, kvdOffset)
-        return out
-    }
-
-    private fun buildKeyValues(values: Map<String, String>): ByteArray {
-        val chunks = ArrayList<ByteArray>()
-        for ((key, value) in values) {
-            val entry = "$key\u0000$value".encodeToByteArray()
-            val size = ByteArray(4)
-            putU32le(size, 0, entry.size)
-            chunks += size
-            chunks += entry
-            chunks += ByteArray((4 - entry.size % 4) % 4)
-        }
-        return chunks.fold(ByteArray(0)) { acc, chunk -> acc + chunk }
-    }
-
-    private fun box(type: String, payload: ByteArray): ByteArray {
-        val out = ByteArray(8 + payload.size)
-        putU32(out, 0, out.size)
-        type.encodeToByteArray().copyInto(out, 4)
-        payload.copyInto(out, 8)
-        return out
-    }
-
-    /** KTX2 的字段是小端序，与 MP4 相反。 */
-    private fun putU64le(target: ByteArray, offset: Int, value: Long) {
-        for (i in 0 until 8) target[offset + i] = ((value ushr (8 * i)) and 0xFF).toByte()
-    }
-
-    private fun putU32le(target: ByteArray, offset: Int, value: Int) {
-        target[offset] = value.toByte()
-        target[offset + 1] = (value ushr 8).toByte()
-        target[offset + 2] = (value ushr 16).toByte()
-        target[offset + 3] = (value ushr 24).toByte()
-    }
-
-    private fun putU32(target: ByteArray, offset: Int, value: Int) {
-        target[offset] = (value ushr 24).toByte()
-        target[offset + 1] = (value ushr 16).toByte()
-        target[offset + 2] = (value ushr 8).toByte()
-        target[offset + 3] = value.toByte()
+    private fun ktxFile(fps: Int? = 24, opaque: Boolean = false, premultiplied: Boolean = false): ByteArray {
+        val layer = ByteArray(8 * 4 * 4) { if (it % 4 == 3) (if (opaque) 255 else 128).toByte() else 64 }
+        val values = linkedMapOf("anim.premultiplied" to premultiplied.toString())
+        if (fps != null) values["anim.fps"] = fps.toString()
+        return Ktx.write(KtxFormat.RGBA8, 8, 4, listOf(layer, layer.copyOf()), values)
     }
 }

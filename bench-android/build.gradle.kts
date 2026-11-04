@@ -53,8 +53,8 @@ android {
         compose = true
         buildConfig = true
     }
-    // KAP 使用 openFd/mmap；压缩资产无法打开。 / KAP openFd/mmap requires stored assets.
-    androidResources { noCompress += listOf("ktx", "ktx2") }
+    // Prism 容器使用文件描述符定位载荷；资产必须原样打包。 / Prism containers require stored assets for descriptor-based payload access.
+    androidResources { noCompress += listOf("prism") }
 
     val demoAssets = providers.gradleProperty("demoAssets").getOrElse("../demo-data")
     sourceSets.getByName("main").assets.srcDir(demoAssets)

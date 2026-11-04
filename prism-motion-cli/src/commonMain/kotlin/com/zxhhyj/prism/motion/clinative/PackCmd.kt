@@ -3,11 +3,15 @@ package com.zxhhyj.prism.motion.clinative
 import com.zxhhyj.prism.motion.ktx.Ktx
 import com.zxhhyj.prism.motion.ktx.KtxFormat
 import com.zxhhyj.prism.motion.format.Mp4
+import com.zxhhyj.prism.motion.format.PrismAlphaMode
+import com.zxhhyj.prism.motion.format.PrismContainer
+import com.zxhhyj.prism.motion.format.PrismMetadata
+import com.zxhhyj.prism.motion.format.PrismPayloadKind
 import com.zxhhyj.prism.motion.probe.PrismMotionProbe
 import com.zxhhyj.prism.motion.utils.err
 import com.zxhhyj.prism.motion.utils.Platform
 
-/** pack vap / pack kap：用内嵌（或外部）ffmpeg、astcenc 完成帧序列打包。 */
+/** 将帧序列编码为原生载荷并封装到 .prism。 / Encodes frames to native payloads wrapped in .prism containers. */
 internal object PackCmd {
 
     fun run(kind: String, options: Map<String, String>, asJson: Boolean): Int {
@@ -16,11 +20,15 @@ internal object PackCmd {
         if (framesDir == null || out == null) {
             return fail("pack $kind 需要 --frames <dir> 与 --out <file>", asJson, EXIT_USAGE)
         }
+        if (!out.endsWith(".prism", ignoreCase = true)) {
+            return fail("--out 只接受 .prism，旧 .mp4/.ktx/.ktx2 输出已废弃 / --out must end in .prism", asJson, EXIT_USAGE)
+        }
+        if (kind != "vap" && kind != "kap") return fail("未知后端: $kind（只有 vap / kap）", asJson, EXIT_USAGE)
         if (!Platform.exists(framesDir) || !Platform.isDirectory(framesDir)) {
             return fail("帧目录不存在: $framesDir", asJson, EXIT_USAGE)
         }
-        val fps = options["fps"]?.toIntOrNull() ?: 30
-        if (fps <= 0) return fail("--fps 必须为正数", asJson, EXIT_USAGE)
+        val fps = if ("fps" in options) options["fps"]?.toIntOrNull() else 30
+        if (fps == null || fps <= 0) return fail("--fps 必须为正整数 / --fps must be a positive integer", asJson, EXIT_USAGE)
         out.substringBeforeLast('/', "").takeIf { it.isNotEmpty() }?.let(Platform::mkdirs)
 
         return try {
@@ -81,11 +89,11 @@ internal object PackCmd {
         val mp4 = Mp4Writer.write(layout.videoW, layout.videoH, fps, avc)
 
         val vapc = VapPack.vapcJson(frames.size, width, height, layout, fps).encodeToByteArray()
-        Platform.writeFile(out, Mp4.insertTopLevel(mp4, Mp4.box("vapc", vapc)))
-        val sidecar = "${out.substringBeforeLast('.')}.vapc.json"
-        Platform.writeFile(sidecar, vapc)
-
-        return report("vap", out, sidecar, frames.size, fps, asJson)
+        val payload = Mp4.insertTopLevel(mp4, Mp4.box("vapc", vapc))
+        val metadata = PrismMetadata(width, height, frames.size, fps, 1,
+            alphaMode = if (hasAlpha) PrismAlphaMode.Premultiplied else PrismAlphaMode.Opaque)
+        Platform.writeFile(out, PrismContainer.write(metadata, PrismPayloadKind.Vap, payload))
+        return report("vap", out, frames.size, fps, asJson)
     }
 
     private fun hasTransparentPixel(frame: Frame): Boolean {
@@ -120,12 +128,14 @@ internal object PackCmd {
         val tmp = Platform.makeTempDir("prism-motion-kap")
         try {
             val layers = ArrayList<ByteArray>()
+            var hasAlpha = false
             if (format == KtxFormat.RGBA8) {
                 for (file in files) {
                     val frame = ImageDecoder.decodePng(Platform.readFile(file))
                     if (frame.width != width || frame.height != height) {
                         return fail("帧尺寸不一致：$file 是 ${frame.width}x${frame.height}", asJson, EXIT_RUNTIME)
                     }
+                    hasAlpha = hasAlpha || hasTransparentPixel(frame)
                     val layer = frame.rgba.copyOf()
                     if (premultiply) premultiplyAlpha(layer)
                     layers += layer
@@ -139,10 +149,15 @@ internal object PackCmd {
                 }
                 val expected = format.layerSize(width, height)
                 for ((index, file) in files.withIndex()) {
+                    val frame = ImageDecoder.decodePng(Platform.readFile(file))
+                    if (frame.width != width || frame.height != height) {
+                        return fail("帧尺寸不一致：$file 是 ${frame.width}x${frame.height}", asJson, EXIT_RUNTIME)
+                    }
+                    hasAlpha = hasAlpha || hasTransparentPixel(frame)
                     val astcPath = "$tmp/frame_$index.astc"
-                    val code = Platform.runProcess(
-                        listOf(astcenc, "-cl", file, astcPath, block, "-medium", "-silent"),
-                    )
+                    val command = listOf(astcenc, "-cl", file, astcPath, block, "-medium", "-silent") +
+                        if (premultiply) listOf("-pp-premultiply") else emptyList()
+                    val code = Platform.runProcess(command)
                     if (code != 0) return fail("astcenc 失败（退出码 $code）", asJson, EXIT_RUNTIME)
                     val astc = Platform.readFile(astcPath)
                     if (astc.size < 16) return fail("astcenc 输出为空", asJson, EXIT_RUNTIME)
@@ -159,9 +174,15 @@ internal object PackCmd {
                 "anim.loop" to (options["loop"]?.toBooleanStrictOrNull() ?: true).toString(),
                 "anim.premultiplied" to premultiply.toString(),
             )
-            val bytes = Ktx.write(format, width, height, layers, keyValues)
-            Platform.writeFile(out, bytes)
-            return report("kap", out, null, files.size, fps, asJson)
+            val payload = Ktx.write(format, width, height, layers, keyValues)
+            val alphaMode = when {
+                !hasAlpha -> PrismAlphaMode.Opaque
+                premultiply -> PrismAlphaMode.Premultiplied
+                else -> PrismAlphaMode.Straight
+            }
+            val metadata = PrismMetadata(width, height, files.size, fps, 1, alphaMode)
+            Platform.writeFile(out, PrismContainer.write(metadata, PrismPayloadKind.Ktx2, payload))
+            return report("kap", out, files.size, fps, asJson)
         } finally {
             Platform.removeRecursively(tmp)
         }
@@ -202,8 +223,9 @@ internal object PackCmd {
     private fun naturalKey(name: String): Long =
         name.substringBeforeLast('.').filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
 
-    private fun report(kind: String, out: String, sidecar: String?, frames: Int, fps: Int, asJson: Boolean): Int {
+    private fun report(kind: String, out: String, frames: Int, fps: Int, asJson: Boolean): Int {
         val probe = PrismMotionProbe.probe(out)
+        if (!probe.ok) return fail("输出校验失败 / Output validation failed: ${probe.issues.joinToString { it.message }}", asJson, EXIT_VALIDATION)
         if (asJson) {
             println(
                 Json.obj(
@@ -211,7 +233,6 @@ internal object PackCmd {
                     "command" to Json.str("pack"),
                     "kind" to Json.str(kind),
                     "out" to Json.str(out),
-                    "sidecar" to Json.str(sidecar),
                     "bytes" to Json.num(probe.bytes),
                     "frameCount" to Json.num(frames),
                     "fps" to Json.num(fps),
@@ -220,7 +241,6 @@ internal object PackCmd {
             )
         } else {
             println("packed $out  ${probe.width}x${probe.height}  $frames f  $fps fps  ${probe.bytes} bytes")
-            sidecar?.let { println("sidecar $it") }
         }
         return EXIT_OK
     }
