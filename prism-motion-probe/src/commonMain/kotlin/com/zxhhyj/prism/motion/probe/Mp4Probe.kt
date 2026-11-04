@@ -1,5 +1,9 @@
 package com.zxhhyj.prism.motion.probe
 
+import com.zxhhyj.prism.motion.format.Bytes
+import com.zxhhyj.prism.motion.format.Mp4
+import com.zxhhyj.prism.motion.format.Mp4Box
+import com.zxhhyj.prism.motion.format.Vapc
 /** MP4 / VAP 容器里抽出来的事实。字段为 null 表示容器里没有。 */
 internal data class Mp4Facts(
     val width: Int?,
@@ -15,14 +19,10 @@ internal data class Mp4Facts(
 internal object Mp4Probe {
 
     fun probe(data: ByteArray): Mp4Facts {
-        val boxes = Mp4Boxes(data)
-        val top = boxes.topLevel()
+        val top = Mp4.boxes(data)
         val issues = ArrayList<ProbeIssue>()
         val metadata = LinkedHashMap<String, String>()
 
-        if (boxes.truncated) {
-            issues += ProbeIssue(ProbeSeverity.Warning, "truncated", "文件末尾的 box 长度不完整")
-        }
         if (top.none { it.type == "ftyp" }) {
             issues += ProbeIssue(ProbeSeverity.Error, "not-mp4", "缺少 ftyp box，不是 ISO BMFF 容器")
         }
@@ -36,16 +36,17 @@ internal object Mp4Probe {
 
         val vapc = top.firstOrNull { it.type == "vapc" }
         if (vapc != null) {
-            val json = boxes.payload(vapc).decodeToString().trim()
+            val json = data.decodeToString(vapc.payload, vapc.end).trim()
             metadata["vapc"] = json
-            frameCount = number(json, "f")?.toInt()
-            width = number(json, "w")?.toInt()
-            height = number(json, "h")?.toInt()
-            fps = number(json, "fps")?.toInt()
-            hasAlpha = bool(json, "hasAlpha")
-            metadata["vapc.version"] = number(json, "v")?.toString().orEmpty()
-            if (width == null || height == null) {
+            val config = Vapc.parse(json)
+            if (config == null) {
                 issues += ProbeIssue(ProbeSeverity.Error, "bad-vapc", "vapc JSON 缺少 w/h 字段")
+            } else {
+                width = config.width
+                height = config.height
+                frameCount = config.frameCount.takeIf { it > 0 }
+                fps = config.fps
+                hasAlpha = config.hasAlpha
             }
         } else {
             issues += ProbeIssue(
@@ -57,9 +58,10 @@ internal object Mp4Probe {
 
         val moov = top.firstOrNull { it.type == "moov" }
         if (moov != null) {
-            durationMs = readDurationMs(boxes, boxes.children(moov))
+            val moovChildren = Mp4.children(data, moov)
+            durationMs = readDurationMs(data, moovChildren)
             if (width == null || height == null) {
-                val size = readTrackSize(boxes, boxes.children(moov))
+                val size = readTrackSize(data, moovChildren)
                 width = width ?: size?.first
                 height = height ?: size?.second
             }
@@ -76,49 +78,40 @@ internal object Mp4Probe {
         return Mp4Facts(width, height, durationMs, frameCount, fps, hasAlpha, metadata, issues)
     }
 
-    private fun readDurationMs(boxes: Mp4Boxes, moovChildren: List<Mp4Boxes.Box>): Long? {
+    private fun readDurationMs(bytes: ByteArray, moovChildren: List<Mp4Box>): Long? {
         val mvhd = moovChildren.firstOrNull { it.type == "mvhd" } ?: return null
-        val version = boxes.u8(mvhd.payload)
+        val version = Bytes.u8(bytes, mvhd.payload)
         val timescale: Long
         val duration: Long
         if (version == 1) {
             if (mvhd.end - mvhd.payload < 32) return null
-            timescale = boxes.u32(mvhd.payload + 20)
-            duration = boxes.u64(mvhd.payload + 24)
+            timescale = Bytes.u32be(bytes, mvhd.payload + 20)
+            duration = Bytes.u64le(bytes, mvhd.payload + 24)
         } else {
             if (mvhd.end - mvhd.payload < 20) return null
-            timescale = boxes.u32(mvhd.payload + 12)
-            duration = boxes.u32(mvhd.payload + 16)
+            timescale = Bytes.u32be(bytes, mvhd.payload + 12)
+            duration = Bytes.u32be(bytes, mvhd.payload + 16)
         }
         if (timescale <= 0) return null
         return duration * 1000L / timescale
     }
 
     /** tkhd 的 width/height 是 16.16 定点数。 */
-    private fun readTrackSize(boxes: Mp4Boxes, moovChildren: List<Mp4Boxes.Box>): Pair<Int, Int>? {
+    private fun readTrackSize(bytes: ByteArray, moovChildren: List<Mp4Box>): Pair<Int, Int>? {
         for (trak in moovChildren.filter { it.type == "trak" }) {
-            val tkhd = boxes.children(trak).firstOrNull { it.type == "tkhd" } ?: continue
-            val version = boxes.u8(tkhd.payload)
+            val tkhd = Mp4.children(bytes, trak).firstOrNull { it.type == "tkhd" } ?: continue
+            val version = Bytes.u8(bytes, tkhd.payload)
             val offset = if (version == 1) 88 else 76
             if (tkhd.end - tkhd.payload < offset + 8) continue
-            val w = (boxes.u32(tkhd.payload + offset) / 65536).toInt()
-            val h = (boxes.u32(tkhd.payload + offset + 4) / 65536).toInt()
+            val w = (Bytes.u32be(bytes, tkhd.payload + offset) / 65536).toInt()
+            val h = (Bytes.u32be(bytes, tkhd.payload + offset + 4) / 65536).toInt()
             if (w > 0 && h > 0) return w to h
         }
         return null
     }
 
-    private fun number(json: String, key: String): Long? =
-        Regex("\"${Regex.escape(key)}\"\\s*:\\s*(-?\\d+)").find(json)
-            ?.groupValues?.get(1)?.toLongOrNull()
-
-    private fun bool(json: String, key: String): Boolean? =
-        Regex("\"${Regex.escape(key)}\"\\s*:\\s*(true|false)").find(json)
-            ?.groupValues?.get(1)?.toBooleanStrictOrNull()
-
     fun isVapLike(data: ByteArray): Boolean {
-        val boxes = Mp4Boxes(data)
-        val top = boxes.topLevel()
+        val top = Mp4.boxes(data)
         return top.any { it.type == "vapc" } || top.any { it.type == "ftyp" }
     }
 }

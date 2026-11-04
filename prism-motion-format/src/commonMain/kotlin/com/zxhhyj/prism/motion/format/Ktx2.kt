@@ -1,7 +1,7 @@
-package com.zxhhyj.prism.motion.clinative
+package com.zxhhyj.prism.motion.format
 
 /** KTX2 子集写入：ASTC 或 RGBA8 的单 level、多层（帧）动画容器，与 kap-core 的格式一致。 */
-internal enum class KtxFormat(
+public enum class Ktx2Format(
     val vkFormat: Int,
     val blockW: Int,
     val blockH: Int,
@@ -20,7 +20,7 @@ internal enum class KtxFormat(
     }
 }
 
-internal object Ktx2 {
+public object Ktx2 {
 
     private val MAGIC = byteArrayOf(
         0xAB.toByte(), 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30,
@@ -39,8 +39,8 @@ internal object Ktx2 {
             "0000000000000000ff000000",
     )
 
-    fun write(
-        format: KtxFormat,
+    public fun write(
+        format: Ktx2Format,
         width: Int,
         height: Int,
         layers: List<ByteArray>,
@@ -55,7 +55,7 @@ internal object Ktx2 {
         }
 
         val dfd = when (format) {
-            KtxFormat.RGBA8 -> DFD_RGBA8
+            Ktx2Format.RGBA8 -> DFD_RGBA8
             else -> DFD_ASTC.copyOf().also {
                 it[16] = (format.blockW - 1).toByte()
                 it[17] = (format.blockH - 1).toByte()
@@ -150,4 +150,73 @@ internal object Ktx2 {
         ByteArray(value.length / 2) { index ->
             value.substring(index * 2, index * 2 + 2).toInt(16).toByte()
         }
+}
+
+/** 读出来的 KTX2 动画：元数据 + 未解码的 layer 数据。 / Parsed KTX2: metadata plus undecoded layer payloads. */
+public class Ktx2Animation(
+    public val width: Int,
+    public val height: Int,
+    public val fps: Int,
+    public val format: Ktx2Format?,
+    public val vkFormat: Int,
+    public val layers: List<ByteArray>,
+    public val keyValues: Map<String, String>,
+)
+
+/** KTX2 读取：只做容器解析，不解码像素。 / KTX2 reading: container parsing only, no pixel decoding. */
+public object Ktx2Reader {
+
+    private val MAGIC = byteArrayOf(
+        0xAB.toByte(), 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30,
+        0xBB.toByte(), 0x0D, 0x0A, 0x1A, 0x0A,
+    )
+
+    public fun isKtx2(bytes: ByteArray): Boolean =
+        bytes.size >= MAGIC.size && MAGIC.indices.all { bytes[it] == MAGIC[it] }
+
+    public fun read(bytes: ByteArray): Ktx2Animation {
+        require(bytes.size > 104 && isKtx2(bytes)) { "不是 KTX2 文件" }
+        val vkFormat = Bytes.u32le(bytes, 12).toInt()
+        val width = Bytes.u32le(bytes, 20).toInt()
+        val height = Bytes.u32le(bytes, 24).toInt()
+        val layerCount = Bytes.u32le(bytes, 32).toInt()
+        val kvdOffset = Bytes.u32le(bytes, 56).toInt()
+        val kvdLength = Bytes.u32le(bytes, 60).toInt()
+        val levelOffset = Bytes.u64le(bytes, 80).toInt()
+        val levelLength = Bytes.u64le(bytes, 88).toInt()
+
+        val keyValues = readKeyValues(bytes, kvdOffset, kvdLength)
+        val fps = keyValues["anim.fps"]?.toIntOrNull()?.takeIf { it > 0 } ?: 30
+        val format = Ktx2Format.entries.firstOrNull { it.vkFormat == vkFormat }
+
+        require(layerCount > 0) { "KTX2 没有帧" }
+        require(levelLength % layerCount == 0) { "level 长度无法被帧数整除" }
+        val layerSize = levelLength / layerCount
+        val layers = List(layerCount) { index ->
+            val start = levelOffset + index * layerSize
+            require(start + layerSize <= bytes.size) { "KTX2 layer 越界" }
+            bytes.copyOfRange(start, start + layerSize)
+        }
+        return Ktx2Animation(width, height, fps, format, vkFormat, layers, keyValues)
+    }
+
+    private fun readKeyValues(bytes: ByteArray, offset: Int, length: Int): Map<String, String> {
+        val result = LinkedHashMap<String, String>()
+        var position = offset
+        val end = (offset + length).coerceAtMost(bytes.size)
+        while (position + 4 <= end) {
+            val entryLength = Bytes.u32le(bytes, position).toInt()
+            position += 4
+            if (entryLength <= 0 || position + entryLength > end) break
+            val entry = bytes.decodeToString(position, position + entryLength)
+            position += entryLength
+            position += (4 - entryLength % 4) % 4
+            val separator = entry.indexOf('\u0000')
+            if (separator > 0) {
+                result[entry.substring(0, separator).trimEnd('\u0000')] =
+                    entry.substring(separator + 1).trimEnd('\u0000')
+            }
+        }
+        return result
+    }
 }

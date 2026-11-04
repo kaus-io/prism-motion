@@ -61,6 +61,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 api(projects.prismMotionProbe)
+                api(projects.prismMotionFormat)
                 api(projects.prismMotionUtils)
             }
         }

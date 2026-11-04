@@ -1,5 +1,8 @@
 package com.zxhhyj.prism.motion.clinative
 
+import com.zxhhyj.prism.motion.format.Vapc
+import com.zxhhyj.prism.motion.format.VapcRect
+
 /** VAP 画布布局与帧打包，规则与 vap-encode 的 EncodeLayout / AlphaFramePacker 一致。 */
 internal object VapPack {
 
@@ -85,60 +88,30 @@ internal object VapPack {
         }
     }
 
+    /** 生成 vapc JSON，交给 format 模块统一序列化。 / Serializes vapc through the shared format module. */
     fun vapcJson(
         frames: Int,
         width: Int,
         height: Int,
         layout: Layout,
         fps: Int,
-    ): String {
-        val alphaRect = if (layout.hasAlpha) {
-            "[${layout.alphaX},${layout.alphaY},${layout.alphaW},${layout.alphaH}]"
-        } else {
-            "[0,0,0,0]"
-        }
-        return """{"info":{"v":3,"f":$frames,"w":$width,"h":$height,"videoW":${layout.videoW},"videoH":${layout.videoH},"fps":$fps,"aFrame":$alphaRect,"rgbFrame":[0,0,$width,$height],"hasAlpha":${layout.hasAlpha}}}"""
-    }
-
-    /** 在顶层 box 的第 [position] 个之前插入一个完整 box。 */
-    fun insertBox(mp4: ByteArray, box: ByteArray, position: Int = 3): ByteArray {
-        val offsets = ArrayList<Int>()
-        var p = 0
-        while (p + 8 <= mp4.size) {
-            var size = readIntBe(mp4, p)
-            val type = CharArray(4) { mp4[p + 4 + it].toInt().toChar() }.concatToString()
-            if (size == 1) return mp4 // 不支持 64 位长度，直接原样返回
-            if (size == 0) size = mp4.size - p
-            if (size < 8 || p + size > mp4.size) break
-            check(type.length == 4)
-            offsets += p
-            p += size
-        }
-        val at = position.coerceIn(0, offsets.size)
-        val out = ByteArray(mp4.size + box.size)
-        var dst = 0
-        for (i in 0..offsets.size) {
-            if (i == at) {
-                box.copyInto(out, dst)
-                dst += box.size
-            }
-            if (i < offsets.size) {
-                val start = offsets[i]
-                val end = if (i + 1 < offsets.size) offsets[i + 1] else mp4.size
-                mp4.copyInto(out, dst, start, end)
-                dst += end - start
-            }
-        }
-        return out
-    }
-
-    fun boxBytes(type: String, payload: ByteArray): ByteArray {
-        val out = ByteArray(8 + payload.size)
-        writeIntBe(out, 0, out.size)
-        for (i in 0 until 4) out[4 + i] = type[i].code.toByte()
-        payload.copyInto(out, 8)
-        return out
-    }
+    ): String = Vapc.toJson(
+        Vapc(
+            width = width,
+            height = height,
+            videoWidth = layout.videoW,
+            videoHeight = layout.videoH,
+            fps = fps,
+            frameCount = frames,
+            hasAlpha = layout.hasAlpha,
+            rgb = VapcRect(0, 0, width, height),
+            alpha = if (layout.hasAlpha) {
+                VapcRect(layout.alphaX, layout.alphaY, layout.alphaW, layout.alphaH)
+            } else {
+                VapcRect(0, 0, 0, 0)
+            },
+        ),
+    )
 
     private fun fill16(value: Int): Int = if (value % 16 == 0) 0 else ((value / 16) + 1) * 16 - value
 

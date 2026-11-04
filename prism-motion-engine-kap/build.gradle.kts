@@ -16,6 +16,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.prismMotionCompose)
+            api(projects.prismMotionFormat)
             api(compose.foundation)
             implementation(libs.kotlinx.coroutines.core)
         }
@@ -28,6 +29,7 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(kotlin("test"))
+            implementation(libs.kotlinx.coroutines.core)
         }
     }
 }

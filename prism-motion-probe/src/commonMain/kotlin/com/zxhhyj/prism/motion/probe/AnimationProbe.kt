@@ -1,6 +1,7 @@
 package com.zxhhyj.prism.motion.probe
 
 import com.zxhhyj.prism.motion.AnimationFormat
+import com.zxhhyj.prism.motion.format.Ktx2Reader
 
 /** 按容器魔数识别格式，再抽元数据；不做解码，JVM 与 Kotlin/Native 共用。 */
 public object AnimationProbe {
@@ -58,7 +59,7 @@ public object AnimationProbe {
             }
 
             AnimationFormat.Kap -> {
-                val facts = Ktx2Probe.probe(bytes)
+                val facts = probeKtx2(bytes)
                 issues += facts.issues
                 ProbeResult(
                     fileName = fileName,
@@ -85,8 +86,39 @@ public object AnimationProbe {
         }
     }
 
+    private fun probeKtx2(bytes: ByteArray): Ktx2Facts {
+        if (!Ktx2Reader.isKtx2(bytes)) {
+            return Ktx2Facts(null, null, null, null, null, emptyMap(),
+                listOf(ProbeIssue(ProbeSeverity.Error, "not-ktx2", "缺少 KTX2 魔数")),
+            )
+        }
+        return runCatching { Ktx2Reader.read(bytes) }.fold(
+            onSuccess = { animation ->
+                val issues = if (animation.keyValues["anim.fps"] == null) {
+                    listOf(ProbeIssue(ProbeSeverity.Info, "missing-fps", "没有 anim.fps，运行时按 30 处理"))
+                } else {
+                    emptyList()
+                }
+                Ktx2Facts(
+                    width = animation.width,
+                    height = animation.height,
+                    durationMs = animation.layers.size * 1000L / animation.fps,
+                    frameCount = animation.layers.size,
+                    fps = animation.fps,
+                    metadata = animation.keyValues,
+                    issues = issues,
+                )
+            },
+            onFailure = { error ->
+                Ktx2Facts(null, null, null, null, null, emptyMap(),
+                    listOf(ProbeIssue(ProbeSeverity.Error, "bad-ktx2", error.message ?: "KTX2 解析失败")),
+                )
+            },
+        )
+    }
+
     private fun sniff(bytes: ByteArray): AnimationFormat? = when {
-        Ktx2Probe.isKtx2(bytes) -> AnimationFormat.Kap
+        Ktx2Reader.isKtx2(bytes) -> AnimationFormat.Kap
         Mp4Probe.isVapLike(bytes) -> AnimationFormat.Vap
         else -> null
     }

@@ -1,12 +1,12 @@
-package com.zxhhyj.prism.motion.clinative
+package com.zxhhyj.prism.motion.format
 
 /**
  * 最小 MP4 封装：单个视频轨、AVC（H.264）、恒定帧率、每个样本一个 NAL 组。
  * 只写 VAP 需要的字段，不做编辑列表、B 帧重排或音频。
  */
-internal object Mp4Writer {
+public object Mp4Writer {
 
-    fun write(width: Int, height: Int, fps: Int, stream: H264Stream): ByteArray {
+    public fun write(width: Int, height: Int, fps: Int, stream: AvcStream): ByteArray {
         val samples = stream.samples
         require(samples.isNotEmpty()) { "没有样本" }
         val durationMs = samples.size * 1000L / fps
@@ -54,7 +54,7 @@ internal object Mp4Writer {
         height: Int,
         fps: Int,
         durationMs: Long,
-        stream: H264Stream,
+        stream: AvcStream,
         chunkOffset: Int,
     ): ByteArray = box("moov") {
         bytes(mvhd(durationMs))
@@ -82,7 +82,7 @@ internal object Mp4Writer {
         height: Int,
         fps: Int,
         durationMs: Long,
-        stream: H264Stream,
+        stream: AvcStream,
         chunkOffset: Int,
     ): ByteArray = box("trak") {
         bytes(
@@ -155,7 +155,7 @@ internal object Mp4Writer {
         )
     }
 
-    private fun stbl(width: Int, height: Int, stream: H264Stream, chunkOffset: Int): ByteArray =
+    private fun stbl(width: Int, height: Int, stream: AvcStream, chunkOffset: Int): ByteArray =
         box("stbl") {
             bytes(
                 box("stsd") {
@@ -207,7 +207,7 @@ internal object Mp4Writer {
             }
         }
 
-    private fun avc1(width: Int, height: Int, stream: H264Stream): ByteArray = box("avc1") {
+    private fun avc1(width: Int, height: Int, stream: AvcStream): ByteArray = box("avc1") {
         repeat(6) { u8(0) }
         u16(1) // data_reference_index
         u16(0)

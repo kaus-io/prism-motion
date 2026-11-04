@@ -40,5 +40,6 @@ include(
     ":prism-motion-probe",
     ":prism-motion-cli",
     ":prism-motion-utils",
+    ":prism-motion-format",
     ":utils-jvm",
 )

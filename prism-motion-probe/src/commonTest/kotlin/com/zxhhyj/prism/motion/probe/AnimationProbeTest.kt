@@ -88,7 +88,7 @@ class AnimationProbeTest {
     }
 
     private fun ktx2(width: Int, height: Int, layers: Int, fps: Int): ByteArray {
-        val header = ByteArray(80)
+        val header = ByteArray(104)
         val magic = byteArrayOf(
             0xAB.toByte(), 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30,
             0xBB.toByte(), 0x0D, 0x0A, 0x1A, 0x0A,
@@ -101,9 +101,18 @@ class AnimationProbeTest {
         putU32le(header, 36, 1)
         putU32le(header, 40, 1)
         val kv = buildKeyValues(mapOf("anim.fps" to fps.toString(), "anim.loop" to "true"))
-        putU32le(header, 56, 80)
+        val kvdOffset = 104
+        val levelOffset = ((kvdOffset + kv.size + 3) / 4) * 4
+        val layerBytes = width * height * 4
+        putU32le(header, 56, kvdOffset)
         putU32le(header, 60, kv.size)
-        return header + kv
+        putU64le(header, 80, levelOffset.toLong())
+        putU64le(header, 88, (layerBytes * layers).toLong())
+        putU64le(header, 96, (layerBytes * layers).toLong())
+        val out = ByteArray(levelOffset + layerBytes * layers)
+        header.copyInto(out, 0)
+        kv.copyInto(out, kvdOffset)
+        return out
     }
 
     private fun buildKeyValues(values: Map<String, String>): ByteArray {
@@ -128,6 +137,10 @@ class AnimationProbeTest {
     }
 
     /** KTX2 的字段是小端序，与 MP4 相反。 */
+    private fun putU64le(target: ByteArray, offset: Int, value: Long) {
+        for (i in 0 until 8) target[offset + i] = ((value ushr (8 * i)) and 0xFF).toByte()
+    }
+
     private fun putU32le(target: ByteArray, offset: Int, value: Int) {
         target[offset] = value.toByte()
         target[offset + 1] = (value ushr 8).toByte()

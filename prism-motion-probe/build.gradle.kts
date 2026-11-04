@@ -21,6 +21,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.prismMotionCore)
+            api(projects.prismMotionFormat)
             api(libs.kotlinx.io.core)
         }
         commonTest.dependencies { implementation(kotlin("test")) }
