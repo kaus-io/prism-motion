@@ -14,6 +14,7 @@ junit = "4.13.2"
 robolectric = "4.17"
 kap = "1.0.0-alpha01"
 vap = "1.0.0-alpha01"
+mavenPublish = "0.37.0"
 
 [libraries]
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -37,3 +38,4 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+maven-publish = { id = "com.vanniktech.maven.publish.base", version.ref = "mavenPublish" }

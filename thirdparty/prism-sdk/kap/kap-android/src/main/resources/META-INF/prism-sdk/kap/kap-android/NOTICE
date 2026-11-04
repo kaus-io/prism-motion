@@ -1,0 +1,24 @@
+KAP SDK source snapshot for Prism Motion
+Copyright (c) 2026 zxhhyj
+SPDX-License-Identifier: MIT
+
+This distribution contains the kap-core, kap-android and kap-compose release
+module closure copied from the local Hanna repository's library-teyes/kap
+working tree, including the frozen Region implementation for 1.0.0-alpha01.
+Production Kotlin/C/C++/shader source bytes and tests are retained exactly.
+Standalone release settings, publishing metadata, the reduced dependency
+catalog and license-resource packaging are Prism-specific release glue.
+PROVENANCE.json in the parent snapshot directory records the source commit,
+local modifications, per-file hashes and the precise redistribution boundary.
+
+Auditable source distribution:
+https://github.com/kaus-io/prism-motion/tree/main/thirdparty/prism-sdk/kap
+
+kap-android includes Zstandard common/decompression source, licensed under the
+BSD 3-Clause License, Copyright (c) Meta Platforms, Inc. and affiliates.
+The complete original notice is retained at
+kap-android/src/main/cpp/third_party/zstd/LICENSE and redistributed in native
+Android artifacts as META-INF/prism-sdk/kap/kap-android/ZSTD-LICENSE.
+The KAP MIT license is redistributed as META-INF/prism-sdk/kap/{module}/LICENSE;
+each module uses its own path so applications can merge all SDK artifacts.
+No precompiled JNI libraries are included in this source snapshot.

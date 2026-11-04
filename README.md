@@ -89,18 +89,14 @@ android {
 ```bash
 ./gradlew build                                  # Android / JVM 库
 ./gradlew :prism-motion-core:jvmTest :prism-motion-probe:jvmTest
-./gradlew nativeCli                              # CLI：native/build/bin/linuxX64/releaseExecutable/prism-motion.kexe
+./gradlew nativeCli                              # CLI：prism-motion-cli/build/bin/linuxX64/releaseExecutable/prism-motion.kexe
 ```
 
-`local.properties` 需要一行 `sdk.dir=<Android SDK>`。
+本机可在 `local.properties` 设置 `sdk.dir=<Android SDK>`；CI 使用 Android SDK 环境变量。
 
-引擎依赖支持 Region 来源的 KAP / VAP 版本化包，坐标以 [依赖清单](<gradle/libs.versions.toml>) 为准。当前通过本机 Maven 接入，不引用其它仓库的源码或构建目录。在各 SDK 仓库验证后执行：
+引擎通过 `com.kaus-io` Maven 坐标依赖支持 Region 的 KAP / VAP，版本由 [依赖清单](<gradle/libs.versions.toml>) 固定，不引用 Hanna 的本地目录。首发所需 SDK 已作为可审计的[冻结源码快照](<thirdparty/prism-sdk/PROVENANCE.json>)保存：CI 先独立生成版本包，再用隔离 Maven 仓库构建 Prism，最后将整套签名产物原子发布到 Central。发布验证禁用本机 Maven。
 
-```bash
-./gradlew publishToMavenLocal -PskipSigning=true
-```
-
-已发布版本不覆盖；修改 SDK 后应使用新的版本号。
+已发布版本不覆盖。CLI 下载版、Central 库、签名配置、验证与失败重试见[发布说明](<docs/releasing.md>)。
 
 ## CLI
 
@@ -108,18 +104,18 @@ CLI 只有一个实现：Kotlin/Native 编译的原生可执行文件，不依�
 
 ```bash
 ./gradlew nativeCli
-# Linux:   native/build/bin/linuxX64/releaseExecutable/prism-motion.kexe   （约 6 MB）
-# Windows: native/build/bin/mingwX64/releaseExecutable/prism-motion.exe    （约 2.4 MB）
+# Linux:   prism-motion-cli/build/bin/linuxX64/releaseExecutable/prism-motion.kexe
+# Windows: prism-motion-cli/build/bin/mingwX64/releaseExecutable/prism-motion.exe
 ```
 
 | 平台 | 构建方式 | 状态 |
 | --- | --- | --- |
 | Linux x86_64 | 任意主机交叉编译 | 已验证 |
 | Windows x86_64 | 在 Linux 上交叉编译 | 当前支持 `probe` / `check` / `engines`；新打包流程需要 PNG 解码以生成准确元数据，Windows PNG/H.264 尚未接入 |
-| macOS arm64 / x86_64 | 只能在 macOS 主机上构建 | 代码已就绪，未在本机构建 |
+| macOS arm64 / x86_64 | 需在 macOS 主机补齐原生配置 | 未纳入首发，原生链接与工具尚待验证 |
 
-`tools/` 按平台分目录（`tools/linux-x86_64/`、`tools/windows-x86_64/`、`tools/macos-arm64/` …），
-构建时把对应平台的 `astcenc` 追加到该平台的可执行文件末尾；缺哪个平台就跳过哪个。
+[内嵌工具](<thirdparty/tools/>)按平台分目录，构建时把对应平台的 `astcenc` 追加到可执行文件末尾。
+开发构建允许缺少工具时跳过；发行流程会独立验证工具 payload、全新缓存解包与实际执行，缺工具不能通过发布门禁。
 
 ```bash
 prism-motion.kexe engines                                  # 引擎与平台支持

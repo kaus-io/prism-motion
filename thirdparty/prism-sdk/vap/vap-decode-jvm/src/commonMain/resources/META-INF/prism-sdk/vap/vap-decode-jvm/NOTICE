@@ -1,0 +1,23 @@
+VAP SDK source snapshot for Prism Motion
+Copyright (c) 2026 zxhhyj
+SPDX-License-Identifier: MIT
+
+This distribution contains the vap-log, vap-core, vap-decode-api,
+vap-decode-jvm, vap-vk-android, vap-decode-android and vap-compose release
+module closure copied from the local Hanna repository's library-teyes/vap
+working tree, including the frozen Region implementation for 1.0.0-alpha01.
+Production Kotlin/C++/shader source bytes and tests are retained exactly.
+Standalone release settings, publishing metadata, the reduced dependency
+catalog and license-resource packaging are Prism-specific release glue.
+PROVENANCE.json in the parent snapshot directory records the source commit,
+local modifications, per-file hashes and the precise redistribution boundary.
+
+Auditable source distribution:
+https://github.com/kaus-io/prism-motion/tree/main/thirdparty/prism-sdk/vap
+
+The original MIT license is retained in LICENSE and redistributed in artifacts
+as META-INF/prism-sdk/vap/{module}/LICENSE, together with this NOTICE.
+Each module uses its own path so applications can merge all SDK artifacts.
+The unused vap_seq.frag.spv binary is excluded; the original GLSL and embedded
+SPIR-V C headers are retained. No precompiled JNI libraries are included.
+External Maven dependencies retain their separate upstream licensing terms.

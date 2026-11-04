@@ -192,7 +192,7 @@ internal object ProbeCmd {
         "fpsDenominator" to Json.num(result.fpsDenominator),
         "alphaMode" to Json.str(result.alphaMode?.name),
         "hasAlpha" to Json.bool(result.hasAlpha),
-        "metadata" to Json.obj(result.metadata),
+        "metadata" to Json.obj(result.metadata.mapValues { (_, value) -> Json.str(value) }),
         "issues" to Json.arr(
             result.issues.map {
                 Json.obj(

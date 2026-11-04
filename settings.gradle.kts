@@ -22,8 +22,12 @@ dependencyResolutionManagement {
                 includeGroupByRegex("androidx.*")
             }
         }
-        // kap / vap 目前只发布到本机 maven（0.x-LOCAL），没有公共仓库。
-        mavenLocal()
+        val strictRelease = providers.gradleProperty("releaseStrictDependencies").orNull == "true"
+        providers.gradleProperty("dependencyRepositoryUrl").orNull?.let { repositoryUrl ->
+            require(!repositoryUrl.contains('@')) { "Dependency repository URL must not embed credentials" }
+            maven { url = uri(repositoryUrl) }
+        }
+        if (!strictRelease) mavenLocal()
         mavenCentral()
     }
 }

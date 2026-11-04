@@ -36,6 +36,9 @@ class PrismCliContractTest {
         assertTrue(json.contains("\"fpsNumerator\":30"), json)
         assertTrue(json.contains("\"fpsDenominator\":1"), json)
         assertTrue(json.contains("\"alphaMode\":\"Straight\""), json)
+        assertTrue(json.contains("\"anim.fps\":\"30\""), json)
+        val escaped = ProbeCmd.toJson(result.copy(metadata = mapOf("writer" to "prism-motion-cli-native", "quoted" to "\"value\"\n")))
+        assertTrue(escaped.contains("\"metadata\":{\"writer\":\"prism-motion-cli-native\",\"quoted\":\"\\\"value\\\"\\n\"}"), escaped)
     }
 
     @Test
