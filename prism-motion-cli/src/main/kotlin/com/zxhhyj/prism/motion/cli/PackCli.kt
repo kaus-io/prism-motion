@@ -1,10 +1,10 @@
 package com.zxhhyj.prism.motion.cli
 
-import com.zxhhyj.ktxanim.core.KtxFormat
-import com.zxhhyj.ktxanim.encode.AstcQuality
-import com.zxhhyj.ktxanim.encode.KtxEncodeException
-import com.zxhhyj.ktxanim.encode.KtxEncodeRequest
-import com.zxhhyj.ktxanim.encode.KtxEncoder
+import com.zxhhyj.kap.core.KtxFormat
+import com.zxhhyj.kap.encode.AstcQuality
+import com.zxhhyj.kap.encode.KtxEncodeException
+import com.zxhhyj.kap.encode.KtxEncodeRequest
+import com.zxhhyj.kap.encode.KtxEncoder
 import com.zxhhyj.prism.motion.probe.AnimationProbe
 import com.zxhhyj.vap.encode.DefaultVapEncoder
 import com.zxhhyj.vap.encode.EncodeProgress

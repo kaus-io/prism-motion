@@ -19,7 +19,7 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 kap-compose = { module = "com.kaus-io:kap-compose", version.ref = "kap" }
-kap-encode = { module = "com.kaus-io:ktxanim-encode", version.ref = "kap" }
+kap-encode = { module = "com.kaus-io:kap-encode", version.ref = "kap" }
 vap-compose = { module = "com.kaus-io:vap-compose", version.ref = "vap" }
 vap-encode = { module = "com.kaus-io:vap-encode", version.ref = "vap" }
 
