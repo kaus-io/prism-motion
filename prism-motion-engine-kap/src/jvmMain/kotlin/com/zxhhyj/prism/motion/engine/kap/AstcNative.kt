@@ -57,7 +57,13 @@ internal object AstcNative {
 
     val available: Boolean get() = lib != null
 
-    /** 解码一帧 ASTC 块到 RGBA。 / Decodes one ASTC payload into RGBA. */
+    /**
+     * 解码一帧 ASTC 块到 RGBA。加锁串行化：多实例并发解码时 astcenc 的配置结构
+     * 若共享会触发断言，而且单帧解码本身是 CPU 密集的。
+     * Decodes one ASTC payload into RGBA. Serialised: concurrent decodes previously
+     * tripped astcenc assertions, and the work is CPU-bound anyway.
+     */
+    @Synchronized
     fun decode(blocks: ByteArray, width: Int, height: Int, blockWidth: Int, blockHeight: Int): ByteArray? {
         val library = lib ?: return null
         val config = Memory(1024)

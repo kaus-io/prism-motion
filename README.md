@@ -17,6 +17,7 @@
 | `prism-motion-utils` | JVM + Kotlin/Native | 平台工具：文件读写（kotlinx-io）、进程、env、临时目录、可执行路径 |
 | `utils-jvm` | JVM | 纯 JVM 胶水：原生库（JNA）查找 |
 | `prism-motion-cli` | Kotlin/Native | CLI：探测、校验、图片帧打包（与上面同一个 Gradle build） |
+| `demo-desktop` | JVM（Compose Multiplatform） | 演示与基准：同屏多实例播放、帧率/RSS 采样 |
 
 ## 契约
 
@@ -27,6 +28,29 @@
 - 加载失败是 `AnimationStatus.Failed` 状态，不向组合抛异常；取消异常照常上抛。
 - 引擎显式指定优先，否则按 `supports` 选择，**不做跨引擎静默降级**。
 - 目前只实现 `AnimationOutput.TextureView`；其余宿主会明确失败，不静默退回其它合成方式。
+
+## 演示与基准
+
+`demo-desktop` 是 Compose Multiplatform 桌面应用，同时充当基准工具。
+
+```bash
+# 1. 生成资产：尺寸 × 透明/不透明 × 质量（VAP 码率、KAP 像素格式）
+./demo-desktop/generate-assets.sh          # 默认 128/256/512，码率 1000/6000，rgba8/astc-8x8
+
+# 2. 交互演示：同屏多实例、切换资产、看 fps / RSS
+./gradlew :demo-desktop:run
+
+# 3. 窗口基准：帧间隔 + RSS 曲线
+./gradlew :demo-desktop:run --args="--bench --size 256"
+
+# 4. 加载基准：打开 N 个实例、解出全部帧的耗时与内存
+./gradlew :demo-desktop:run --args="--bench --load --size 512"
+```
+
+结果写入 `demo-desktop/build/reports/bench.csv` 与 `bench-load.csv`。
+
+资产命名：`{alpha|opaque}-{size}-{quality}.{mp4|ktx2}`，例如
+`alpha-512-b6000.mp4`、`opaque-256-rgba8.ktx2`。`--size` / `--count` / `--engine` 可以过滤场景。
 
 ## 构建
 

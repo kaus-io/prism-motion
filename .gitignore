@@ -16,3 +16,6 @@ local.properties
 
 # IDE
 .openidea/
+
+# Demo assets（由 demo-desktop 的脚本生成）
+demo-data/

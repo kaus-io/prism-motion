@@ -38,6 +38,7 @@ include(
     ":prism-motion-engine-kap",
     ":prism-motion-engine-vap",
     ":prism-motion-probe",
+    ":demo-desktop",
     ":prism-motion-cli",
     ":prism-motion-utils",
     ":prism-motion-format",
