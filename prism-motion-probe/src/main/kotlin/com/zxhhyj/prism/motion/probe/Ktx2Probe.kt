@@ -83,8 +83,7 @@ internal object Ktx2Probe {
             }
         }
 
-        // 老打包器写 ktxanim.*，改名后写 anim.*，两种都认。
-        val fpsValue = metadata["anim.fps"] ?: metadata["ktxanim.fps"]
+        val fpsValue = metadata["anim.fps"]
         fps = fpsValue?.toIntOrNull()
         if (fpsValue == null) {
             issues += ProbeIssue(ProbeSeverity.Info, "missing-fps", "没有 anim.fps，运行时按 30 处理")
