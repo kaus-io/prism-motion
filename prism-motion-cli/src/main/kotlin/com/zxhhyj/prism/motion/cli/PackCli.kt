@@ -148,7 +148,7 @@ internal object PackCli {
         fps: Int,
         asJson: Boolean,
     ): Int {
-        val probe = AnimationProbe.probe(out)
+        val probe = AnimationProbe.probe(out.toString())
         if (asJson) {
             println(
                 Json.obj(

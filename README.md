@@ -11,7 +11,8 @@
 | `prism-motion-engine-kap` | Android | KAP（KTX2 + Vulkan）引擎 |
 | `prism-motion-engine-vap` | Android | VAP（MediaCodec）引擎 |
 | `prism-motion-probe` | JVM | MP4 / KTX2 容器探测与校验，不解码 |
-| `prism-motion-cli` | JVM | 给 agent / CI 用的命令行 |
+| `prism-motion-cli` | JVM | 给 agent / CI 用的命令行（单文件 jar） |
+| `native/` | Kotlin/Native | 同一套命令的原生可执行文件，独立 Gradle 构建 |
 
 ## 契约
 
@@ -71,7 +72,22 @@ prism-motion pack vap --frames frames/ --out out.mp4 --fps 30
 - `probe` 读取：VAP 的 `vapc` box（尺寸 / 帧数 / fps / hasAlpha）与 `mvhd` 时长；
   KAP 的 KTX2 头（尺寸 / layerCount）与 key/value（`anim.fps` 等）。
 
+## 原生 CLI（Kotlin/Native）
+
+命令、参数、JSON 与 JVM 版一致，产物是单个可执行文件（约 82 MB，内含 ffmpeg/astcenc）：
+
+```bash
+./gradlew nativeCli
+# native/build/bin/linuxX64/releaseExecutable/prism-motion.kexe
+```
+
+`native/` 是**独立 Gradle 构建**：Kotlin/Native 的 build service 无法与 AGP 模块共存于同一个
+Gradle build，所以它通过 `srcDir` 复用 `prism-motion-core` / `prism-motion-probe` 的平台无关源码。
+构建后会把 `tools/ffmpeg`、`tools/astcenc` 追加到可执行文件末尾（`PMTOOLS1` payload），
+运行时首次使用解压到 `~/.cache/prism-motion/tools/`。
+
 ## 已知限制
 
-- KAP / VAP 引擎仍是 Android-only（MediaCodec / Vulkan）；JVM 侧提供契约、探测与打包。
+- KAP / VAP 引擎仍是 Android-only（MediaCodec / Vulkan）；JVM / 原生侧提供契约、探测与打包。
+- 原生 CLI 目前只构建 `linuxX64`；其它平台需要给 `native/build.gradle.kts` 加对应 target 并重新内嵌二进制。
 - CLI 依赖已发布的 `com.kaus-io:kap-*` / `com.kaus-io:vap-*`，版本见 `gradle/libs.versions.toml`。

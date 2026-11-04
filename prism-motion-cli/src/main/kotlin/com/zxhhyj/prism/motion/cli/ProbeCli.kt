@@ -110,7 +110,7 @@ internal object ProbeCli {
 
     /** check 额外要求后缀可识别；probe 允许未知格式但会报错。 */
     private fun checkOne(path: Path): ProbeResult {
-        val result = AnimationProbe.probe(path)
+        val result = AnimationProbe.probe(path.toString())
         if (AnimationFormat.ofFileName(path.name) == null) {
             return result.copy(
                 issues = result.issues + ProbeIssue(
@@ -155,7 +155,7 @@ internal object ProbeCli {
         )
     }
 
-    private fun safeProbe(path: Path): ProbeResult = runCatching { AnimationProbe.probe(path) }.getOrElse { e ->
+    private fun safeProbe(path: Path): ProbeResult = runCatching { AnimationProbe.probe(path.toString()) }.getOrElse { e ->
         ProbeResult(
             fileName = path.name,
             format = null,
