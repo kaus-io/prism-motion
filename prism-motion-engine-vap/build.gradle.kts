@@ -16,7 +16,17 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.prismMotionCompose)
+            api(compose.foundation)
+        }
+        androidMain.dependencies {
             api(libs.vap.compose)
+        }
+        jvmMain.dependencies {
+            implementation(libs.jna)
+            implementation(libs.kotlinx.coroutines.core)
+        }
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
         }
     }
 }

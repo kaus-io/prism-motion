@@ -9,7 +9,7 @@
 | `prism-motion-core` | Android + JVM（KMP） | 源、请求、引擎、注册表、输出面、状态契约；无 Compose |
 | `prism-motion-compose` | Android + JVM（Compose Multiplatform） | `AnimationOutput` / `AnimationRenderer` / `AnimationState` / `Animation()` |
 | `prism-motion-engine-kap` | Android + JVM | KAP 引擎：Android 走 KTX2+Vulkan，JVM 走自研解码 + Compose 绘制 |
-| `prism-motion-engine-vap` | Android + JVM | VAP 引擎（Android 走 MediaCodec，JVM 走 vap 的 bytedeco+skiko 实现） |
+| `prism-motion-engine-vap` | Android + JVM | VAP 引擎（Android 走 MediaCodec；JVM 走自有 MP4 解封装 + OpenH264 解码） |
 | `prism-motion-probe` | JVM + Kotlin/Native | MP4 / KTX2 容器探测与校验，不解码 |
 | `prism-motion-utils` | JVM + Kotlin/Native | 平台工具：文件读写（kotlinx-io）、进程、env、临时目录、可执行路径 |
 | `prism-motion-cli` | Kotlin/Native | CLI：探测、校验、图片帧打包（与上面同一个 Gradle build） |
@@ -130,6 +130,9 @@ git submodule update --init --recursive
   `astcenc -dl` 子进程。库查找顺序：`PRISM_MOTION_ASTC_LIB` > `~/.cache/prism-motion/native/`
   > `thirdparty/native/<platform>/` > 系统路径。
 - `compose`、`engine-vap`、`engine-kap` 都已同时支持 Android 和 JVM（Compose Multiplatform）。
+- **JVM 侧不再依赖 FFmpeg**：`engine-vap` 自带 MP4 解封装（`VapMp4`），解码用
+  OpenH264 经 JNA 调 `libprismdecode.so`；`engine-kap` 解码用 `libastcenc.so`。两者都是
+  `thirdparty/build-thirdparty.sh` 编出来的原生库。
 - Windows 产物只做了交叉编译验证，没有真机 / wine 运行；且缺少 stb_image / OpenH264 的 mingw 交叉编译，
   因此 PNG 解码与 H.264 编码在 Windows 上会明确报错（其它命令正常）。
 - macOS 目标只能在 macOS 主机上构建。

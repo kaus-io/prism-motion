@@ -39,6 +39,17 @@ if [ ! -f "$TP/lib/$PLATFORM/libopenh264.a" ]; then
   cp "$UPSTREAM/openh264/codec/api/wels/"*.h "$TP/include/openh264/"
 fi
 
+if [ ! -f "$TP/native/$PLATFORM/libprismdecode.so" ]; then
+  echo "==> 编译 libprismdecode.so（OpenH264 解码器 + JVM/native 共用）"
+  mkdir -p "$TP/native/$PLATFORM"
+  # 复制带 soname 的共享库，并建一个不带版本号的软链供链接使用。
+  cp "$UPSTREAM/openh264/libopenh264.so.2.6.0" "$TP/native/$PLATFORM/libopenh264.so.8"
+  ln -sf libopenh264.so.8 "$TP/native/$PLATFORM/libopenh264.so"
+  cc -O2 -fPIC -shared -I"$TP/shim" -I"$UPSTREAM/openh264/codec/api/wels" \
+    -o "$TP/native/$PLATFORM/libprismdecode.so" "$TP/shim/prism_decode.c" \
+    -L"$TP/native/$PLATFORM" -lopenh264 -Wl,-rpath,'$ORIGIN' -lpthread
+fi
+
 if [ ! -f "$TP/native/$PLATFORM/libastcenc.so" ]; then
   echo "==> 编译 libastcenc.so（供 JVM 经 JNA 调用）"
   mkdir -p "$TP/native/$PLATFORM"
