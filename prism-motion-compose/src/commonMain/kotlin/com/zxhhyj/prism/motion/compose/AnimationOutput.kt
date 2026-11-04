@@ -1,6 +1,5 @@
 package com.zxhhyj.prism.motion.compose
 
-import android.view.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -13,6 +12,7 @@ import com.zxhhyj.prism.motion.AnimationEngineId
 import com.zxhhyj.prism.motion.AnimationEngineRegistry
 import com.zxhhyj.prism.motion.AnimationRequest
 import com.zxhhyj.prism.motion.AnimationResource
+import com.zxhhyj.prism.motion.AnimationSurface
 import com.zxhhyj.prism.motion.AnimationStatus
 
 /** 输出宿主。目前只实现 TextureView，其余两个保留接口。 */
@@ -22,8 +22,8 @@ public sealed interface AnimationOutput {
     /** 独立 Surface，省 HWUI 合成；不能裁 Compose 形状。暂未实现。 */
     public data object SurfaceView : AnimationOutput
 
-    /** 调用方自己持有 Surface；生命周期归调用方。暂未实现。 */
-    public data class External(public val surface: Surface) : AnimationOutput
+    /** 调用方自己持有输出面；生命周期归调用方。暂未实现。 / Caller-owned surface; not implemented yet. */
+    public data class External(public val surface: AnimationSurface) : AnimationOutput
 }
 
 /** 引擎提供的渲染实现。当前契约只要求支持 [AnimationOutput.TextureView]。 */

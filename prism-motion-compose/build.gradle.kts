@@ -1,28 +1,24 @@
 plugins {
-    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.android.kmp.library)
 }
 
-android {
-    namespace = "com.zxhhyj.prism.motion.compose"
-    compileSdk = 37
-
-    defaultConfig {
-        minSdk = 33
+kotlin {
+    jvm()
+    android {
+        namespace = "com.zxhhyj.prism.motion.compose"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
     }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+    sourceSets {
+        commonMain.dependencies {
+            api(projects.prismMotionCore)
+            api(compose.runtime)
+            api(compose.ui)
+            implementation(libs.kotlinx.coroutines.core)
+        }
     }
-}
-
-dependencies {
-    api(projects.prismMotionCore)
-    // 公开签名暴露 Modifier / ContentScale / State。
-    api(platform(libs.androidx.compose.bom))
-    api(libs.androidx.ui)
-    // 与主工程保持同一 lifecycle 版本，避免解析到未缓存的旧版本。
-    api(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.kotlinx.coroutines.core)
 }
