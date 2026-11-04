@@ -18,6 +18,7 @@
 | `utils-jvm` | JVM | 纯 JVM 胶水：原生库（JNA）查找 |
 | `prism-motion-cli` | Kotlin/Native | CLI：探测、校验、图片帧打包（与上面同一个 Gradle build） |
 | `demo-desktop` | JVM（Compose Multiplatform） | 演示与基准：同屏多实例播放、帧率/RSS 采样 |
+| `demo-android` | Android App | 同款演示；bench 模式输出帧间隔与 PSS 曲线 |
 
 ## 契约
 
@@ -48,6 +49,21 @@
 ```
 
 结果写入 `demo-desktop/build/reports/bench.csv` 与 `bench-load.csv`。
+
+### Android
+
+```bash
+# 生成小体积资产（默认全部资产会让 APK 到几十 MB）
+SIZES="128 256" KAP_FORMATS="astc-8x8" ./demo-desktop/generate-assets.sh
+
+# 连接设备后跑基准：安装 → bench 模式播放 → 拉取 CSV（PSS 来自 Debug.MemoryInfo）
+./demo-android/run-bench.sh            # 或 ./demo-android/run-bench.sh <serial>
+
+# 只想手动玩一下
+./gradlew :demo-android:installDebug
+```
+
+资产目录默认是 `../demo-data`，可用 `-PdemoAssets=<dir>` 指向别的目录。
 
 资产命名：`{alpha|opaque}-{size}-{quality}.{mp4|ktx2}`，例如
 `alpha-512-b6000.mp4`、`opaque-256-rgba8.ktx2`。`--size` / `--count` / `--engine` 可以过滤场景。

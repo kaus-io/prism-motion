@@ -3,6 +3,7 @@
 // 所有插件在根项目声明一次并 apply false：AGP 模块与 Kotlin/Native 目标需要在
 // 同一个插件 classloader 下解析，否则 K/N 的 build service 会在兄弟项目间冲突。
 plugins {
+    alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
     alias(libs.plugins.android.kmp.library) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
