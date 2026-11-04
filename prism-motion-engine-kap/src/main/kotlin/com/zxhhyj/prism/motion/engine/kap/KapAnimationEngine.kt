@@ -1,7 +1,7 @@
 package com.zxhhyj.prism.motion.engine.kap
 
 import android.content.Context
-import android.view.Surface
+import com.zxhhyj.prism.motion.AnimationSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -54,7 +54,7 @@ private class KapAnimationResource(internal val player: KtxAnimationState) : Ani
     override val isPlaying: Boolean get() = player.isPlaying
 
     // 目前只支持 TextureView 宿主：Surface 由 [KtxAnimation] 自己持有。
-    override fun attach(surface: Surface, width: Int, height: Int) = Unit
+    override fun attach(surface: AnimationSurface, width: Int, height: Int) = Unit
     override fun resize(width: Int, height: Int) = Unit
     override fun detach() = Unit
 

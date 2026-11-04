@@ -1,0 +1,32 @@
+[versions]
+agp = "9.4.1"
+kotlin = "2.4.21"
+android-compileSdk = "37"
+android-minSdk = "33"
+composeBom = "2026.09.00"
+lifecycle = "2.11.0"
+coroutines = "1.11.0"
+junit = "4.13.2"
+robolectric = "4.17"
+kap = "0.1.0-LOCAL"
+vap = "0.0.1-LOCAL"
+
+[libraries]
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+kap-compose = { module = "com.kaus-io:kap-compose", version.ref = "kap" }
+kap-encode = { module = "com.kaus-io:ktxanim-encode", version.ref = "kap" }
+vap-compose = { module = "com.kaus-io:vap-compose", version.ref = "vap" }
+vap-encode = { module = "com.kaus-io:vap-encode", version.ref = "vap" }
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agp" }
+android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
