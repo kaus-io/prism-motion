@@ -1,8 +1,16 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.shadow)
     application
+}
+
+version = "1.0.0"
+
+base {
+    archivesName.set("prism-motion")
 }
 
 kotlin {
@@ -24,6 +32,13 @@ application {
     tasks.named<JavaExec>("run") {
         workingDir = rootProject.projectDir
     }
+}
+
+tasks.named<ShadowJar>("shadowJar") {
+    archiveClassifier.set("all")
+    mergeServiceFiles()
+    // 单文件运行：java -jar prism-motion-1.0.0-all.jar，不需要额外的 lib/ 目录。
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "module-info.class")
 }
 
 dependencies {

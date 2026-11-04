@@ -28,7 +28,7 @@
 ```bash
 ./gradlew build
 ./gradlew :prism-motion-core:jvmTest :prism-motion-probe:test
-./gradlew :prism-motion-cli:installDist      # 产物在 prism-motion-cli/build/install/prism-motion/bin/
+./gradlew :prism-motion-cli:shadowJar        # 单文件 CLI：prism-motion-cli/build/libs/prism-motion-1.0.0-all.jar
 ```
 
 `local.properties` 需要一行 `sdk.dir=<Android SDK>`。
@@ -41,6 +41,16 @@ KAP / VAP 没有公共仓库，只有本机 maven（`0.x-LOCAL`）。在各自�
 
 ## CLI
 
+单文件发行：`shadowJar` 会把 kotlin stdlib、coroutines、probe、vap-encode、kap-encode
+全部打进一个 jar（约 11 MB），不需要 `lib/` 目录、不需要 Gradle：
+
+```bash
+java -jar prism-motion-1.0.0-all.jar probe assets/a.mp4
+java -jar prism-motion-1.0.0-all.jar pack kap --frames frames/ --out out.ktx2
+```
+
+也可以用 `./gradlew :prism-motion-cli:installDist` 生成带启动脚本的 `bin/prism-motion`。
+
 ```bash
 prism-motion engines                                  # 引擎与平台支持
 prism-motion probe assets/a.mp4 assets/b.ktx2         # 读容器元数据
@@ -52,8 +62,9 @@ prism-motion pack vap --frames frames/ --out out.mp4 --fps 30
 - 所有命令支持 `--json`，输出 `{"ok":…,"command":…}`，便于 agent 解析。
 - 退出码：`0` 成功、`1` 校验失败、`2` 用法错误、`3` 运行失败。
 - `check` 把不认识的扩展名也算失败；读不了的目录直接跳过。
-- `pack vap` 需要 `ffmpeg`（可用 `--ffmpeg` 指定）；`pack kap --format rgba8` 不需要外部工具，
-  ASTC 格式额外需要 `astcenc`。
+- `pack vap` 需要 `ffmpeg`；`pack kap --format rgba8` 不需要外部工具，ASTC 格式额外需要 `astcenc`。
+  外部工具查找顺序：`--ffmpeg/--astcenc` > `PRISM_MOTION_FFMPEG` / `PRISM_MOTION_ASTCENC`
+  > jar 同级 `tools/` > `~/.cache/prism-motion/tools/` > `PATH`。把二进制放进 `tools/` 就能随 jar 一起分发。
 - `probe` 读取：VAP 的 `vapc` box（尺寸 / 帧数 / fps / hasAlpha）与 `mvhd` 时长；
   KAP 的 KTX2 头（尺寸 / layerCount）与 key/value（`anim.fps` 等）。
 

@@ -66,7 +66,7 @@ internal object PackCli {
             scale = options["scale"]?.toFloatOrNull() ?: 0.5f,
             codec = VideoCodec.H265,
             quality = Quality.Bitrate(3000),
-            ffmpegPath = options["ffmpeg"] ?: "ffmpeg",
+            ffmpegPath = options["ffmpeg"] ?: Tools.resolve("ffmpeg"),
             version = 3,
             hasAlpha = alpha,
             outputDir = Files.createTempDirectory("prism-motion-vap").toString(),
@@ -90,7 +90,7 @@ internal object PackCli {
         }
 
         val encoded = result ?: return fail(
-            "VAP 编码失败: ${failure ?: "未知原因"}（需要 ffmpeg 在 PATH 里，或用 --ffmpeg 指定）",
+            "VAP 编码失败: ${failure ?: "未知原因"}（ffmpeg 查找顺序：--ffmpeg > PRISM_MOTION_FFMPEG > jar 同级 tools/ > ~/.cache/prism-motion/tools/ > PATH）",
             asJson,
             EXIT_RUNTIME,
         )
@@ -127,8 +127,8 @@ internal object PackCli {
             quality = AstcQuality.MEDIUM,
             premultiply = options["premultiply"]?.toBooleanStrictOrNull() ?: true,
             loop = options["loop"]?.toBooleanStrictOrNull() ?: true,
-            ffmpeg = options["ffmpeg"] ?: "ffmpeg",
-            astcenc = options["astcenc"] ?: "astcenc",
+            ffmpeg = options["ffmpeg"] ?: Tools.resolve("ffmpeg"),
+            astcenc = options["astcenc"] ?: Tools.resolve("astcenc"),
         )
         return try {
             val result = KtxEncoder().encode(request)
