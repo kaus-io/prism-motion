@@ -103,6 +103,7 @@ Linux / Windows / macOS / JVM 共用一份读写实现；只有进程、环境�
 | --- | --- | --- |
 | `cisco/openh264` | v2.6.0 | BSD-2-Clause |
 | `nothings/stb` | d14d46f | 公有领域 |
+| `ARM-software/astc-encoder` | 4.8.0 | Apache-2.0 |
 
 克隆时带上子模块：
 
@@ -124,8 +125,10 @@ git submodule update --init --recursive
 
 ## 已知限制
 
-- `engine-kap` 的 JVM 实现是自己写的：KTX2 解析 + 帧解码，RGBA8 直接读像素，
-  ASTC 需要外部 `astcenc`（`-dl` 解压，查找顺序 `PRISM_MOTION_ASTCENC` > `~/.cache/prism-motion/tools/astcenc` > PATH）。
+- `engine-kap` 的 JVM 实现是自己写的：KTX2 解析 + 帧解码。RGBA8 直接读像素；
+  ASTC 优先经 **JNA 调用 `libastcenc.so`**（进程内，无临时文件），库不可用时退回
+  `astcenc -dl` 子进程。库查找顺序：`PRISM_MOTION_ASTC_LIB` > `~/.cache/prism-motion/native/`
+  > `thirdparty/native/<platform>/` > 系统路径。
 - `compose`、`engine-vap`、`engine-kap` 都已同时支持 Android 和 JVM（Compose Multiplatform）。
 - Windows 产物只做了交叉编译验证，没有真机 / wine 运行；且缺少 stb_image / OpenH264 的 mingw 交叉编译，
   因此 PNG 解码与 H.264 编码在 Windows 上会明确报错（其它命令正常）。

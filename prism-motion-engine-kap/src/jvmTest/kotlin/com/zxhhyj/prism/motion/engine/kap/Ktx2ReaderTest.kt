@@ -87,3 +87,15 @@ class Ktx2ReaderTest {
         for (i in 0 until 8) target[offset + i] = ((value ushr (8 * i)) and 0xFF).toByte()
     }
 }
+
+class AstcDecodeTest {
+
+    /** 默认跳过；设置 PRISM_TEST_ASTC_KTX2 指向一个 ASTC 版 .ktx2 时才真正解码。 */
+    @Test
+    fun decodesAstcWithNativeLibrary() {
+        val path = System.getenv("PRISM_TEST_ASTC_KTX2") ?: return
+        val animation = Ktx2Reader.read(java.io.File(path).readBytes())
+        assertTrue(animation.width > 0 && animation.height > 0)
+        assertEquals(64 * 64 * 4, animation.frames.first().rgba.size)
+    }
+}

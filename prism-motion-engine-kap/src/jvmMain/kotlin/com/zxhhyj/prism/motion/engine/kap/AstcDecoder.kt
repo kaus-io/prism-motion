@@ -15,6 +15,8 @@ internal object AstcDecoder {
 
     fun decode(blocks: ByteArray, width: Int, height: Int, vkFormat: Int): ByteArray {
         val (blockWidth, blockHeight) = blockSize(vkFormat)
+        // 优先走 JVM 内的 C 调用；库不可用时退回 astcenc 子进程。
+        AstcNative.decode(blocks, width, height, blockWidth, blockHeight)?.let { return it }
         val tool = findTool()
         val dir = Files.createTempDirectory("prism-kap-astc").toFile()
         try {

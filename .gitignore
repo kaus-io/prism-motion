@@ -11,4 +11,5 @@ local.properties
 # 第三方库源码与编译产物（用 thirdparty/build-thirdparty.sh 生成）
 /thirdparty/src/
 /thirdparty/lib/
+/thirdparty/native/
 /thirdparty/include/

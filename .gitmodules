@@ -4,3 +4,6 @@
 [submodule "thirdparty/upstream/stb"]
 	path = thirdparty/upstream/stb
 	url = https://github.com/nothings/stb
+[submodule "thirdparty/upstream/astcenc"]
+	path = thirdparty/upstream/astcenc
+	url = https://github.com/ARM-software/astc-encoder

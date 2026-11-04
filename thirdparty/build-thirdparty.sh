@@ -39,6 +39,15 @@ if [ ! -f "$TP/lib/$PLATFORM/libopenh264.a" ]; then
   cp "$UPSTREAM/openh264/codec/api/wels/"*.h "$TP/include/openh264/"
 fi
 
+if [ ! -f "$TP/native/$PLATFORM/libastcenc.so" ]; then
+  echo "==> 编译 libastcenc.so（供 JVM 经 JNA 调用）"
+  mkdir -p "$TP/native/$PLATFORM"
+  CORE_SOURCES=$(ls "$UPSTREAM"/astcenc/Source/*.cpp | grep -v astcenccli)
+  c++ -std=c++17 -O2 -fPIC -shared -DASTCENC_DYNAMIC_LIBRARY \
+    -I"$UPSTREAM/astcenc/Source" -o "$TP/native/$PLATFORM/libastcenc.so" \
+    $CORE_SOURCES -lpthread
+fi
+
 if [ ! -f "$TP/lib/$PLATFORM/libprismcodec.a" ]; then
   echo "==> 编译 libprismcodec.a（OpenH264 的 C 封装）"
   cc -O2 -fPIC -I"$TP/shim" -I"$UPSTREAM/openh264/codec/api/wels" -c "$TP/shim/prism_codec.c" -o "$SRC/prism_codec.o"

@@ -22,6 +22,9 @@ kotlin {
         androidMain.dependencies {
             api(libs.kap.compose)
         }
+        jvmMain.dependencies {
+            implementation(libs.jna)
+        }
         jvmTest.dependencies {
             implementation(kotlin("test"))
         }
