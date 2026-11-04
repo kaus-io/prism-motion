@@ -57,20 +57,20 @@ import kotlinx.cinterop.pointed
 
 /** 原生侧需要的极简文件 / 进程封装。 */
 @OptIn(ExperimentalForeignApi::class)
-internal object Posix {
+internal actual object Platform {
 
-    fun exists(path: String): Boolean = memScoped {
+    actual fun exists(path: String): Boolean = memScoped {
         val info = alloc<stat>()
         stat(path, info.ptr) == 0
     }
 
-    fun isDirectory(path: String): Boolean = memScoped {
+    actual fun isDirectory(path: String): Boolean = memScoped {
         val info = alloc<stat>()
         if (stat(path, info.ptr) != 0) return false
         (info.st_mode.toInt() and 0xF000) == 0x4000
     }
 
-    fun mkdirs(path: String) {
+    actual fun mkdirs(path: String) {
         val normalized = path.trimEnd('/')
         if (normalized.isEmpty() || exists(normalized)) return
         val parent = normalized.substringBeforeLast('/', "")
@@ -78,7 +78,7 @@ internal object Posix {
         mkdir(normalized, (S_IRUSR or S_IWUSR or S_IXUSR or S_IRGRP or S_IXGRP or S_IROTH or S_IXOTH).toUInt())
     }
 
-    fun readFile(path: String): ByteArray {
+    actual fun readFile(path: String): ByteArray {
         val file = fopen(path, "rb") ?: error("无法打开 $path")
         try {
             val chunks = ArrayList<ByteArray>()
@@ -103,7 +103,7 @@ internal object Posix {
         }
     }
 
-    fun writeFile(path: String, bytes: ByteArray) {
+    actual fun writeFile(path: String, bytes: ByteArray) {
         val file = fopen(path, "wb") ?: error("无法写入 $path")
         try {
             if (bytes.isNotEmpty()) {
@@ -116,17 +116,7 @@ internal object Posix {
         }
     }
 
-    /** 追加写，用于把原生程序自己的 payload 写回。 */
-    fun appendFile(path: String, bytes: ByteArray) {
-        val file = fopen(path, "ab") ?: error("无法追加 $path")
-        try {
-            bytes.usePinned { pinned -> fwrite(pinned.addressOf(0), 1.convert(), bytes.size.convert(), file) }
-        } finally {
-            fclose(file)
-        }
-    }
-
-    fun listDirectory(path: String): List<String> {
+    actual fun listDirectory(path: String): List<String> {
         val dir = opendir(path) ?: return emptyList()
         val names = ArrayList<String>()
         try {
@@ -143,7 +133,7 @@ internal object Posix {
         return names.sorted()
     }
 
-    fun makeTempDir(prefix: String): String {
+    actual fun makeTempDir(prefix: String): String {
         val base = env("TMPDIR")?.takeIf { it.isNotBlank() } ?: "/tmp"
         val unique = "${getpid()}-${(Random.nextLong() and 0x7FFFFFFF)}"
         val path = "$base/$prefix-$unique"
@@ -151,11 +141,11 @@ internal object Posix {
         return path
     }
 
-    fun chmodExecutable(path: String) {
+    actual fun chmodExecutable(path: String) {
         chmod(path, (S_IRUSR or S_IWUSR or S_IXUSR or S_IRGRP or S_IXGRP or S_IROTH or S_IXOTH).toUInt())
     }
 
-    fun removeRecursively(path: String) {
+    actual fun removeRecursively(path: String) {
         if (!exists(path)) return
         if (isDirectory(path)) {
             for (name in listDirectory(path)) removeRecursively("$path/$name")
@@ -165,7 +155,7 @@ internal object Posix {
         }
     }
 
-    fun selfExecutable(): String? = readLink("/proc/self/exe")
+    actual fun selfExecutable(): String? = selfExecutablePath()
 
     private fun readLink(path: String): String? {
         val buffer = ByteArray(4096)
@@ -176,10 +166,14 @@ internal object Posix {
         return buffer.decodeToString(0, count.toInt())
     }
 
-    fun env(name: String): String? = getenv(name)?.toKStringFromUtf8()
+    actual fun env(name: String): String? = getenv(name)?.toKStringFromUtf8()
+
+    actual val executableSuffix: String = ""
+
+    actual val pathSeparator: Char = ':'
 
     /** 阻塞执行子进程并返回退出码；stdout/stderr 直接继承。 */
-    fun runProcess(argv: List<String>): Int = memScoped {
+    actual fun runProcess(argv: List<String>): Int = memScoped {
         require(argv.isNotEmpty()) { "argv 不能为空" }
         val pointers = allocArray<CPointerVar<ByteVar>>(argv.size + 1)
         for ((index, arg) in argv.withIndex()) {

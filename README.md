@@ -45,8 +45,20 @@ CLI 只有一个实现：Kotlin/Native 编译的原生可执行文件，不依�
 
 ```bash
 ./gradlew nativeCli
-# native/build/bin/linuxX64/releaseExecutable/prism-motion.kexe   （约 82 MB）
+# Linux:   native/build/bin/linuxX64/releaseExecutable/prism-motion.kexe   （约 82 MB）
+# Windows: native/build/bin/mingwX64/releaseExecutable/prism-motion.exe    （约 103 MB）
+```
 
+| 平台 | 构建方式 | 状态 |
+| --- | --- | --- |
+| Linux x86_64 | 任意主机交叉编译 | 已验证 |
+| Windows x86_64 | 在 Linux 上交叉编译 | 可编译、产物为 PE32+；未在真机运行验证 |
+| macOS arm64 / x86_64 | 只能在 macOS 主机上构建 | 代码已就绪，未在本机构建 |
+
+`tools/` 按平台分目录（`tools/linux-x86_64/`、`tools/windows-x86_64/`、`tools/macos-arm64/` …），
+构建时把对应平台的 ffmpeg / astcenc 追加到该平台的可执行文件末尾；缺哪个平台就跳过哪个。
+
+```bash
 prism-motion.kexe engines                                  # 引擎与平台支持
 prism-motion.kexe probe assets/a.mp4 assets/b.ktx2         # 读容器元数据
 prism-motion.kexe check assets/                            # 校验整批资源
@@ -73,7 +85,6 @@ Kotlin/Native 的 `KotlinNativeBundleBuildService` 无法和 AGP 模块共存于
 ## 已知限制
 
 - KAP / VAP 引擎仍是 Android-only（MediaCodec / Vulkan）；CLI 侧只做探测、校验与打包。
-- CLI 只构建 `linuxX64`；其它平台需要给 `native/build.gradle.kts` 加对应 target，
-  并把该平台的二进制放进 `tools/` 重新内嵌。
+- Windows 产物只做了交叉编译验证，没有真机 / wine 运行；macOS 目标只能在 macOS 主机上构建。
 - 打包逻辑在原生侧是独立实现（`VapPack` / `Ktx2`），与原 `vap-encode` / `kap-encode` 靠
   `vapc.json` 对拍，暂无跨实现一致性测试。

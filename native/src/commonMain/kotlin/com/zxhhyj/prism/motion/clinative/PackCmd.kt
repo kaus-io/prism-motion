@@ -11,12 +11,12 @@ internal object PackCmd {
         if (framesDir == null || out == null) {
             return fail("pack $kind 需要 --frames <dir> 与 --out <file>", asJson, EXIT_USAGE)
         }
-        if (!Posix.exists(framesDir) || !Posix.isDirectory(framesDir)) {
+        if (!Platform.exists(framesDir) || !Platform.isDirectory(framesDir)) {
             return fail("帧目录不存在: $framesDir", asJson, EXIT_USAGE)
         }
         val fps = options["fps"]?.toIntOrNull() ?: 30
         if (fps <= 0) return fail("--fps 必须为正数", asJson, EXIT_USAGE)
-        out.substringBeforeLast('/', "").takeIf { it.isNotEmpty() }?.let(Posix::mkdirs)
+        out.substringBeforeLast('/', "").takeIf { it.isNotEmpty() }?.let(Platform::mkdirs)
 
         return try {
             when (kind) {
@@ -38,21 +38,21 @@ internal object PackCmd {
     ): Int {
         val files = pngFiles(framesDir)
         if (files.isEmpty()) return fail("$framesDir 里没有 PNG", asJson, EXIT_USAGE)
-        val (width, height) = Png.size(Posix.readFile(files.first()))
+        val (width, height) = Png.size(Platform.readFile(files.first()))
             ?: return fail("第一帧不是有效 PNG", asJson, EXIT_RUNTIME)
 
         val ffmpeg = options["ffmpeg"] ?: Tools.resolve("ffmpeg")
-        val tmp = Posix.makeTempDir("prism-motion-vap")
+        val tmp = Platform.makeTempDir("prism-motion-vap")
         try {
             val rawPath = "$tmp/frames.rgba"
-            val decodeCode = Posix.runProcess(
+            val decodeCode = Platform.runProcess(
                 listOf(
                     ffmpeg, "-y", "-nostdin", "-pattern_type", "glob", "-i", "$framesDir/*.png",
                     "-frames:v", files.size.toString(), "-pix_fmt", "rgba", "-f", "rawvideo", rawPath,
                 ),
             )
             if (decodeCode != 0) return fail("ffmpeg 解码失败（退出码 $decodeCode）", asJson, EXIT_RUNTIME)
-            val raw = Posix.readFile(rawPath)
+            val raw = Platform.readFile(rawPath)
             val frameBytes = width * height * 4
             if (raw.size != frameBytes * files.size) {
                 return fail("解码帧数不符：期望 ${files.size} 帧，实际 ${raw.size / frameBytes} 帧", asJson, EXIT_RUNTIME)
@@ -76,9 +76,9 @@ internal object PackCmd {
                 frame.copyInto(packed, index * canvasBytes)
             }
             val packedPath = "$tmp/packed.rgb"
-            Posix.writeFile(packedPath, packed)
+            Platform.writeFile(packedPath, packed)
 
-            val encodeCode = Posix.runProcess(
+            val encodeCode = Platform.runProcess(
                 listOf(
                     ffmpeg, "-y", "-nostdin", "-f", "rawvideo", "-pix_fmt", "rgb24",
                     "-s", "${layout.videoW}x${layout.videoH}", "-framerate", fps.toString(),
@@ -90,14 +90,14 @@ internal object PackCmd {
             if (encodeCode != 0) return fail("ffmpeg 编码失败（退出码 $encodeCode）", asJson, EXIT_RUNTIME)
 
             val vapc = VapPack.vapcJson(files.size, width, height, layout, fps).encodeToByteArray()
-            val mp4 = VapPack.insertBox(Posix.readFile("$tmp/video.mp4"), VapPack.boxBytes("vapc", vapc))
-            Posix.writeFile(out, mp4)
+            val mp4 = VapPack.insertBox(Platform.readFile("$tmp/video.mp4"), VapPack.boxBytes("vapc", vapc))
+            Platform.writeFile(out, mp4)
             val sidecar = "${out.substringBeforeLast('.')}.vapc.json"
-            Posix.writeFile(sidecar, vapc)
+            Platform.writeFile(sidecar, vapc)
 
             return report("vap", out, sidecar, files.size, fps, asJson)
         } finally {
-            Posix.removeRecursively(tmp)
+            Platform.removeRecursively(tmp)
         }
     }
 
@@ -117,24 +117,24 @@ internal object PackCmd {
         }
         val files = pngFiles(framesDir)
         if (files.isEmpty()) return fail("$framesDir 里没有 PNG", asJson, EXIT_USAGE)
-        val (width, height) = Png.size(Posix.readFile(files.first()))
+        val (width, height) = Png.size(Platform.readFile(files.first()))
             ?: return fail("第一帧不是有效 PNG", asJson, EXIT_RUNTIME)
 
         val premultiply = options["premultiply"]?.toBooleanStrictOrNull() ?: true
-        val tmp = Posix.makeTempDir("prism-motion-kap")
+        val tmp = Platform.makeTempDir("prism-motion-kap")
         try {
             val layers = ArrayList<ByteArray>()
             if (format == KtxFormat.RGBA8) {
                 val ffmpeg = options["ffmpeg"] ?: Tools.resolve("ffmpeg")
                 val rawPath = "$tmp/frames.rgba"
-                val code = Posix.runProcess(
+                val code = Platform.runProcess(
                     listOf(
                         ffmpeg, "-y", "-nostdin", "-pattern_type", "glob", "-i", "$framesDir/*.png",
                         "-frames:v", files.size.toString(), "-pix_fmt", "rgba", "-f", "rawvideo", rawPath,
                     ),
                 )
                 if (code != 0) return fail("ffmpeg 解码失败（退出码 $code）", asJson, EXIT_RUNTIME)
-                val raw = Posix.readFile(rawPath)
+                val raw = Platform.readFile(rawPath)
                 val frameBytes = width * height * 4
                 if (raw.size != frameBytes * files.size) {
                     return fail("解码帧数不符：期望 ${files.size} 帧", asJson, EXIT_RUNTIME)
@@ -154,11 +154,11 @@ internal object PackCmd {
                 val expected = format.layerSize(width, height)
                 for ((index, file) in files.withIndex()) {
                     val astcPath = "$tmp/frame_$index.astc"
-                    val code = Posix.runProcess(
+                    val code = Platform.runProcess(
                         listOf(astcenc, "-cl", file, astcPath, block, "-medium", "-silent"),
                     )
                     if (code != 0) return fail("astcenc 失败（退出码 $code）", asJson, EXIT_RUNTIME)
-                    val astc = Posix.readFile(astcPath)
+                    val astc = Platform.readFile(astcPath)
                     if (astc.size < 16) return fail("astcenc 输出为空", asJson, EXIT_RUNTIME)
                     val blocks = astc.copyOfRange(16, astc.size)
                     if (blocks.size != expected) {
@@ -174,10 +174,10 @@ internal object PackCmd {
                 "anim.premultiplied" to premultiply.toString(),
             )
             val bytes = Ktx2.write(format, width, height, layers, keyValues)
-            Posix.writeFile(out, bytes)
+            Platform.writeFile(out, bytes)
             return report("kap", out, null, files.size, fps, asJson)
         } finally {
-            Posix.removeRecursively(tmp)
+            Platform.removeRecursively(tmp)
         }
     }
 
@@ -208,7 +208,7 @@ internal object PackCmd {
     }
 
     private fun pngFiles(dir: String): List<String> =
-        Posix.listDirectory(dir)
+        Platform.listDirectory(dir)
             .filter { it.endsWith(".png", ignoreCase = true) }
             .sortedBy { naturalKey(it) }
             .map { "$dir/$it" }

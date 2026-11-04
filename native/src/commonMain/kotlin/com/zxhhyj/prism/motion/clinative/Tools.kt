@@ -10,23 +10,23 @@ internal object Tools {
     fun resolve(name: String): String = find(name) ?: name
 
     fun find(name: String): String? {
-        Posix.env(envName(name))?.takeIf { it.isNotBlank() }?.let { return it }
+        Platform.env(envName(name))?.takeIf { it.isNotBlank() }?.let { return it }
+        val file = name + Platform.executableSuffix
 
         executableDir()?.let { dir ->
-            val candidate = "$dir/tools/$name"
-            if (Posix.exists(candidate)) return candidate
+            val candidate = "$dir/tools/$file"
+            if (Platform.exists(candidate)) return candidate
         }
 
-        val cached = "${cacheRoot()}/$name"
-        if (Posix.exists(cached)) return cached
+        val cached = "${cacheRoot()}/$file"
+        if (Platform.exists(cached)) return cached
 
-        extractEmbedded(name)?.let { return it }
+        extractEmbedded(file)?.let { return it }
 
-        val path = Posix.env("PATH").orEmpty()
-        for (entry in path.split(':')) {
+        for (entry in Platform.env("PATH").orEmpty().split(Platform.pathSeparator)) {
             if (entry.isBlank()) continue
-            val candidate = "$entry/$name"
-            if (Posix.exists(candidate) && !Posix.isDirectory(candidate)) return candidate
+            val candidate = "$entry/$file"
+            if (Platform.exists(candidate) && !Platform.isDirectory(candidate)) return candidate
         }
         return null
     }
@@ -37,21 +37,20 @@ internal object Tools {
         return out
     }
 
-    private fun executableDir(): String? =
-        Posix.selfExecutable()?.substringBeforeLast('/', "")
+    private fun executableDir(): String? = Platform.selfExecutable()?.substringBeforeLast('/', "")
 
     private fun cacheRoot(): String {
-        val home = Posix.env("HOME") ?: "/tmp"
-        val base = Posix.env("XDG_CACHE_HOME")?.takeIf { it.isNotBlank() } ?: "$home/.cache"
+        val home = Platform.env("HOME") ?: Platform.env("USERPROFILE") ?: "/tmp"
+        val base = Platform.env("XDG_CACHE_HOME")?.takeIf { it.isNotBlank() } ?: "$home/.cache"
         return "$base/prism-motion/tools"
     }
 
     /** 解析构建时追加在可执行文件末尾的 payload，并按需解压到缓存。 */
-    private fun extractEmbedded(name: String): String? {
-        val exe = Posix.selfExecutable() ?: return null
+    private fun extractEmbedded(fileName: String): String? {
+        val exe = Platform.selfExecutable() ?: return null
         val payload = readPayload(exe) ?: return null
-        val target = "${cacheRoot()}/$name"
-        Posix.mkdirs(cacheRoot())
+        val target = "${cacheRoot()}/$fileName"
+        Platform.mkdirs(cacheRoot())
 
         var offset = 0
         while (offset + 12 <= payload.size) {
@@ -64,10 +63,10 @@ internal object Tools {
             val dataLength = readLong(payload, offset)
             offset += 8
             if (dataLength < 0 || offset + dataLength > payload.size) return null
-            if (entryName == name) {
+            if (entryName == fileName) {
                 val bytes = payload.copyOfRange(offset, offset + dataLength.toInt())
-                Posix.writeFile(target, bytes)
-                Posix.chmodExecutable(target)
+                Platform.writeFile(target, bytes)
+                Platform.chmodExecutable(target)
                 return target
             }
             offset += dataLength.toInt()
@@ -76,11 +75,10 @@ internal object Tools {
     }
 
     private fun readPayload(path: String): ByteArray? {
-        val bytes = Posix.readFile(path)
+        val bytes = Platform.readFile(path)
         if (bytes.size < 24) return null
         val footer = bytes.copyOfRange(bytes.size - 24, bytes.size)
-        val magic = footer.decodeToString(0, 8)
-        if (magic != MAGIC) return null
+        if (footer.decodeToString(0, 8) != MAGIC) return null
         val offset = readLong(footer, 8)
         val length = readLong(footer, 16)
         if (offset < 0 || length < 0 || offset + length > bytes.size - 24) return null

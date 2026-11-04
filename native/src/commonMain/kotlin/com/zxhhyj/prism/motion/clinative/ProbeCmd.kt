@@ -117,11 +117,11 @@ internal object ProbeCmd {
         val out = ArrayList<String>()
         for (raw in paths) {
             when {
-                !Posix.exists(raw) -> {
+                !Platform.exists(raw) -> {
                     err("路径不存在: $raw")
                     return null
                 }
-                Posix.isDirectory(raw) -> walk(raw, out)
+                Platform.isDirectory(raw) -> walk(raw, out)
                 else -> out += raw
             }
         }
@@ -129,9 +129,9 @@ internal object ProbeCmd {
     }
 
     private fun walk(root: String, out: MutableList<String>) {
-        for (name in Posix.listDirectory(root)) {
+        for (name in Platform.listDirectory(root)) {
             val path = "$root/$name"
-            if (Posix.isDirectory(path)) {
+            if (Platform.isDirectory(path)) {
                 walk(path, out)
             } else if (AnimationFormat.ofFileName(name) != null) {
                 out += path
