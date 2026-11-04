@@ -41,8 +41,9 @@ KAP / VAP 没有公共仓库，只有本机 maven（`0.x-LOCAL`）。在各自�
 
 ## CLI
 
-单文件发行：`shadowJar` 会把 kotlin stdlib、coroutines、probe、vap-encode、kap-encode
-全部打进一个 jar（约 11 MB），不需要 `lib/` 目录、不需要 Gradle：
+单文件发行：`shadowJar` 会把 kotlin stdlib、coroutines、probe、vap-encode、kap-encode，
+以及 `tools/` 下的 `ffmpeg` / `astcenc` 一起打进 jar（本机约 40 MB）。
+运行时按需把原生工具解压到 `~/.cache/prism-motion/tools/`，不需要 `lib/` 目录、不需要 Gradle：
 
 ```bash
 java -jar prism-motion-1.0.0-all.jar probe assets/a.mp4
@@ -62,9 +63,11 @@ prism-motion pack vap --frames frames/ --out out.mp4 --fps 30
 - 所有命令支持 `--json`，输出 `{"ok":…,"command":…}`，便于 agent 解析。
 - 退出码：`0` 成功、`1` 校验失败、`2` 用法错误、`3` 运行失败。
 - `check` 把不认识的扩展名也算失败；读不了的目录直接跳过。
-- `pack vap` 需要 `ffmpeg`；`pack kap --format rgba8` 不需要外部工具，ASTC 格式额外需要 `astcenc`。
-  外部工具查找顺序：`--ffmpeg/--astcenc` > `PRISM_MOTION_FFMPEG` / `PRISM_MOTION_ASTCENC`
-  > jar 同级 `tools/` > `~/.cache/prism-motion/tools/` > `PATH`。把二进制放进 `tools/` 就能随 jar 一起分发。
+- `pack vap` 用 `ffmpeg`，`pack kap --format astc-*` 用 `astcenc`；`--format rgba8` 不需要任何外部工具。
+  查找顺序：`--ffmpeg/--astcenc` > `PRISM_MOTION_FFMPEG` / `PRISM_MOTION_ASTCENC` > jar 同级 `tools/`
+  > `~/.cache/prism-motion/tools/` > **jar 内嵌**（缺失时自动解压）> `PATH`。
+- 内嵌的是构建机 `tools/` 里的二进制（当前为 ffmpeg 7.0.2 静态版 + astcenc 4.8.0 avx2），
+  只覆盖构建机平台（`embedded-tools/<os>-<arch>/`）；`tools/` 不入库。
 - `probe` 读取：VAP 的 `vapc` box（尺寸 / 帧数 / fps / hasAlpha）与 `mvhd` 时长；
   KAP 的 KTX2 头（尺寸 / layerCount）与 key/value（`anim.fps` 等）。
 
