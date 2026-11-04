@@ -1,7 +1,7 @@
 package com.zxhhyj.prism.motion.clinative
 
 import com.zxhhyj.prism.motion.PrismMotionFormat
-import com.zxhhyj.prism.motion.probe.AnimationProbe
+import com.zxhhyj.prism.motion.probe.PrismMotionProbe
 import com.zxhhyj.prism.motion.probe.ProbeIssue
 import com.zxhhyj.prism.motion.probe.ProbeResult
 import com.zxhhyj.prism.motion.probe.ProbeSeverity
@@ -141,7 +141,7 @@ internal object ProbeCmd {
         }
     }
 
-    private fun safeProbe(path: String): ProbeResult = runCatching { AnimationProbe.probe(path) }.getOrElse { error ->
+    private fun safeProbe(path: String): ProbeResult = runCatching { PrismMotionProbe.probe(path) }.getOrElse { error ->
         ProbeResult(
             fileName = fileName(path),
             format = null,

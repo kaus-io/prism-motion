@@ -3,7 +3,7 @@ package com.zxhhyj.prism.motion.clinative
 import com.zxhhyj.prism.motion.ktx.Ktx
 import com.zxhhyj.prism.motion.ktx.KtxFormat
 import com.zxhhyj.prism.motion.format.Mp4
-import com.zxhhyj.prism.motion.probe.AnimationProbe
+import com.zxhhyj.prism.motion.probe.PrismMotionProbe
 import com.zxhhyj.prism.motion.utils.err
 import com.zxhhyj.prism.motion.utils.Platform
 
@@ -203,7 +203,7 @@ internal object PackCmd {
         name.substringBeforeLast('.').filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
 
     private fun report(kind: String, out: String, sidecar: String?, frames: Int, fps: Int, asJson: Boolean): Int {
-        val probe = AnimationProbe.probe(out)
+        val probe = PrismMotionProbe.probe(out)
         if (asJson) {
             println(
                 Json.obj(

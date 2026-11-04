@@ -7,11 +7,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class AnimationProbeTest {
+class PrismMotionProbeTest {
 
     @Test
     fun readsVapMetadataFromTheVapcBox() {
-        val result = AnimationProbe.probe(vapFile(), "clip.mp4")
+        val result = PrismMotionProbe.probe(vapFile(), "clip.mp4")
 
         assertEquals(PrismMotionFormat.Vap, result.format)
         assertEquals(100, result.width)
@@ -25,7 +25,7 @@ class AnimationProbeTest {
 
     @Test
     fun plainMp4IsAllowedButFlagged() {
-        val result = AnimationProbe.probe(mp4(FileInfo(width = 64, height = 32, durationMs = 500)), "plain.mp4")
+        val result = PrismMotionProbe.probe(mp4(FileInfo(width = 64, height = 32, durationMs = 500)), "plain.mp4")
 
         assertEquals(PrismMotionFormat.Vap, result.format)
         assertEquals(64, result.width)
@@ -37,7 +37,7 @@ class AnimationProbeTest {
 
     @Test
     fun readsKapMetadataFromTheKtx2KeyValues() {
-        val result = AnimationProbe.probe(ktxBytes(width = 320, height = 240, layers = 10, fps = 30), "clip.ktx")
+        val result = PrismMotionProbe.probe(ktxBytes(width = 320, height = 240, layers = 10, fps = 30), "clip.ktx")
 
         assertEquals(PrismMotionFormat.Kap, result.format)
         assertEquals(320, result.width)
@@ -50,7 +50,7 @@ class AnimationProbeTest {
 
     @Test
     fun unknownContainerIsAnError() {
-        val result = AnimationProbe.probe("not an animation".encodeToByteArray(), "a.gif")
+        val result = PrismMotionProbe.probe("not an animation".encodeToByteArray(), "a.gif")
 
         assertNull(result.format)
         assertFalse(result.ok)
@@ -59,7 +59,7 @@ class AnimationProbeTest {
 
     @Test
     fun suffixThatDisagreesWithContentOnlyWarns() {
-        val result = AnimationProbe.probe(ktxBytes(8, 8, 2, 30), "misnamed.mp4")
+        val result = PrismMotionProbe.probe(ktxBytes(8, 8, 2, 30), "misnamed.mp4")
 
         assertEquals(PrismMotionFormat.Kap, result.format)
         assertTrue(result.ok)

@@ -4,7 +4,7 @@ import com.zxhhyj.prism.motion.PrismMotionFormat
 import com.zxhhyj.prism.motion.ktx.KtxReader
 
 /** 按容器魔数识别格式，再抽元数据；不做解码，JVM 与 Kotlin/Native 共用。 */
-public object AnimationProbe {
+public object PrismMotionProbe {
 
     /** 超过这个大小的文件不整体读入内存，直接报错。 */
     public const val MAX_BYTES: Long = 512L * 1024 * 1024
