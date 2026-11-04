@@ -36,7 +36,8 @@
 
 ```bash
 # 1. 生成资产：尺寸 × 透明/不透明 × 质量（VAP 码率、KAP 像素格式）
-./demo-desktop/generate-assets.sh          # 默认 128/256/512，码率 1000/6000，rgba8/astc-8x8
+./gradlew :demo-desktop:generateDemoAssets               # 默认 128/256/512
+./gradlew :demo-desktop:generateDemoAssets -PdemoSizes=128,256 -PdemoFormats=astc-8x8
 
 # 2. 交互演示：同屏多实例、切换资产、看 fps / RSS
 ./gradlew :demo-desktop:run
@@ -54,10 +55,14 @@
 
 ```bash
 # 生成小体积资产（默认全部资产会让 APK 到几十 MB）
-SIZES="128 256" KAP_FORMATS="astc-8x8" ./demo-desktop/generate-assets.sh
+./gradlew :demo-desktop:generateDemoAssets -PdemoSizes=128,256 -PdemoFormats=astc-8x8
 
-# 连接设备后跑基准：安装 → bench 模式播放 → 拉取 CSV（PSS 来自 Debug.MemoryInfo）
-./demo-android/run-bench.sh            # 或 ./demo-android/run-bench.sh <serial>
+# 连接设备后跑基准（PSS 来自 Debug.MemoryInfo，每个场景写一行）
+./gradlew :demo-android:assembleDebug
+adb install -r demo-android/build/outputs/apk/debug/demo-android-debug.apk
+adb shell am start -n com.zxhhyj.prism.motion.demo.android/.MainActivity --ez bench true
+adb logcat -s prism-bench:I          # 等到 BENCH_DONE
+adb pull /sdcard/Android/data/com.zxhhyj.prism.motion.demo.android/files/bench.csv
 
 # 只想手动玩一下
 ./gradlew :demo-android:installDebug

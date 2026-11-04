@@ -1,6 +1,7 @@
 package com.zxhhyj.prism.motion.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,11 @@ public fun rememberAnimationState(
         } catch (e: Exception) {
             state = AnimationState(request, engine, null, null, AnimationStatus.Failed(e))
         }
+    }
+    // 离开组合或换请求时释放底层资源；文档里承诺过，之前漏了实现。
+    // Releases the resource when leaving composition (or switching requests).
+    DisposableEffect(state) {
+        onDispose { state.resource?.release() }
     }
     return state
 }
