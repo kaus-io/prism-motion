@@ -9,6 +9,6 @@ local.properties
 /tools/
 
 # 第三方库源码与编译产物（用 thirdparty/build-thirdparty.sh 生成）
-/native/thirdparty/src/
-/native/thirdparty/lib/
-/native/thirdparty/include/
+/thirdparty/src/
+/thirdparty/lib/
+/thirdparty/include/

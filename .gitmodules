@@ -1,6 +1,6 @@
-[submodule "native/thirdparty/upstream/openh264"]
-	path = native/thirdparty/upstream/openh264
+[submodule "thirdparty/upstream/openh264"]
+	path = thirdparty/upstream/openh264
 	url = https://github.com/cisco/openh264
-[submodule "native/thirdparty/upstream/stb"]
-	path = native/thirdparty/upstream/stb
+[submodule "thirdparty/upstream/stb"]
+	path = thirdparty/upstream/stb
 	url = https://github.com/nothings/stb

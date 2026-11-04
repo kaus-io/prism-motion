@@ -10,8 +10,8 @@
 | `prism-motion-compose` | Android | `AnimationOutput` / `AnimationRenderer` / `AnimationState` / `Animation()` |
 | `prism-motion-engine-kap` | Android | KAP（KTX2 + Vulkan）引擎 |
 | `prism-motion-engine-vap` | Android | VAP（MediaCodec）引擎 |
-| `prism-motion-probe` | JVM | MP4 / KTX2 容器探测与校验，不解码；源码同时供原生 CLI 复用 |
-| `native/` | Kotlin/Native | CLI：探测、校验、图片帧打包，独立 Gradle 构建 |
+| `prism-motion-probe` | JVM + Kotlin/Native | MP4 / KTX2 容器探测与校验，不解码 |
+| `prism-motion-cli` | Kotlin/Native | CLI：探测、校验、图片帧打包（与上面同一个 Gradle build） |
 
 ## 契约
 
@@ -74,11 +74,13 @@ prism-motion.kexe pack vap --frames frames/ --out out.mp4 --fps 30
 - `probe` 读取：VAP 的 `vapc` box（尺寸 / 帧数 / fps / hasAlpha）与 `mvhd` 时长；
   KAP 的 KTX2 头（尺寸 / layerCount）与 key/value（`anim.fps` 等）。
 
-### 原生构建为什么单独
+### 构建结构
 
-Kotlin/Native 的 `KotlinNativeBundleBuildService` 无法和 AGP 模块共存于同一个 Gradle build，
-所以 `native/` 是独立构建，通过 `srcDir` 复用 `prism-motion-core` / `prism-motion-probe` 的
-平台无关源码。链接完成后，`embedTools` 任务把 `tools/ffmpeg`、`tools/astcenc` 追加到可执行文件末尾
+所有模块（含 Android 和 Kotlin/Native）在**同一个 Gradle build** 里。关键是根项目
+`build.gradle.kts` 把所有插件声明一次并 `apply false`：AGP 模块和 K/N 目标必须在同一套
+插件 classloader 下解析，否则 K/N 的 build service 会在兄弟项目间冲突（同 `mandysa` 的做法）。
+
+链接完成后 `embedTools` 任务把 `thirdparty/tools/<platform>/astcenc` 追加到可执行文件末尾
 （`PMTOOLS1` payload），运行时首次使用解压到 `~/.cache/prism-motion/tools/`。
 
 ## 内置编解码栈
@@ -90,7 +92,7 @@ Kotlin/Native 的 `KotlinNativeBundleBuildService` 无法和 AGP 模块共存于
 | MP4 封装 | 本仓库 `Mp4Writer`（纯 Kotlin） | 同本仓库 |
 | ASTC 压缩 | [astcenc](https://github.com/ARM-software/astc-encoder) 4.8.0 | Apache-2.0 |
 
-上游源码以 **git submodule** 固定版本，放在 `native/thirdparty/upstream/`：
+上游源码以 **git submodule** 固定版本，放在 `thirdparty/upstream/`：
 
 | submodule | 版本 | 许可 |
 | --- | --- | --- |

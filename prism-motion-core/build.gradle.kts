@@ -15,6 +15,14 @@ kotlin {
         }
     }
 
+    // Native 目标：CLI 与工具复用同一份契约。
+    linuxX64()
+    mingwX64()
+    if (System.getProperty("os.name").lowercase().contains("mac")) {
+        macosX64()
+        macosArm64()
+    }
+
     // Android target：引擎与 Compose 渲染器挂在上面。
     android {
         namespace = "com.zxhhyj.prism.motion"

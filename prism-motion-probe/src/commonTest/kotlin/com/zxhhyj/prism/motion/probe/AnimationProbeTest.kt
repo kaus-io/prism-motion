@@ -50,7 +50,7 @@ class AnimationProbeTest {
 
     @Test
     fun unknownContainerIsAnError() {
-        val result = AnimationProbe.probe("not an animation".toByteArray(), "a.gif")
+        val result = AnimationProbe.probe("not an animation".encodeToByteArray(), "a.gif")
 
         assertNull(result.format)
         assertFalse(result.ok)
@@ -72,7 +72,7 @@ class AnimationProbeTest {
 
     private fun vapFile(): ByteArray {
         val json = """{"info":{"v":3,"f":60,"w":100,"h":200,"videoW":100,"videoH":400,"fps":30,"hasAlpha":true}}"""
-        return mp4(FileInfo(100, 200, 1_000)) + box("vapc", json.toByteArray())
+        return mp4(FileInfo(100, 200, 1_000)) + box("vapc", json.encodeToByteArray())
     }
 
     private fun mp4(info: FileInfo): ByteArray {
@@ -84,7 +84,7 @@ class AnimationProbeTest {
         putU32(tkhd, 76, info.width * 65_536)
         putU32(tkhd, 80, info.height * 65_536)
         val moov = box("moov", box("mvhd", mvhd) + box("trak", box("tkhd", tkhd)))
-        return box("ftyp", "isom".toByteArray()) + moov
+        return box("ftyp", "isom".encodeToByteArray()) + moov
     }
 
     private fun ktx2(width: Int, height: Int, layers: Int, fps: Int): ByteArray {
@@ -107,22 +107,22 @@ class AnimationProbeTest {
     }
 
     private fun buildKeyValues(values: Map<String, String>): ByteArray {
-        val out = java.io.ByteArrayOutputStream()
+        val chunks = ArrayList<ByteArray>()
         for ((key, value) in values) {
-            val entry = "$key\u0000$value".toByteArray(Charsets.UTF_8)
+            val entry = "$key\u0000$value".encodeToByteArray()
             val size = ByteArray(4)
             putU32le(size, 0, entry.size)
-            out.write(size)
-            out.write(entry)
-            repeat((4 - entry.size % 4) % 4) { out.write(0) }
+            chunks += size
+            chunks += entry
+            chunks += ByteArray((4 - entry.size % 4) % 4)
         }
-        return out.toByteArray()
+        return chunks.fold(ByteArray(0)) { acc, chunk -> acc + chunk }
     }
 
     private fun box(type: String, payload: ByteArray): ByteArray {
         val out = ByteArray(8 + payload.size)
         putU32(out, 0, out.size)
-        type.toByteArray().copyInto(out, 4)
+        type.encodeToByteArray().copyInto(out, 4)
         payload.copyInto(out, 8)
         return out
     }
