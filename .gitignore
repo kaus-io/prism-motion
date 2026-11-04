@@ -13,3 +13,6 @@ local.properties
 /thirdparty/lib/
 /thirdparty/native/
 /thirdparty/include/
+
+# IDE
+.openidea/
