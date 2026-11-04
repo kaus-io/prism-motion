@@ -23,6 +23,14 @@ COLUMNS = ["asset", "count", "valid", "error", "cpu_percent", "pss_median_mb", "
 PRIVATE_TOKENS = ("astc", "rgba", "b1500", "alpha-256", ".ktx", ".mp4", "10000", "20000", "4000000",
                   "2500", "private-hardware", "private-protocol", "configuration", "asset", "count",
                   "cpu_percent", "pss_median_mb", "submitted_fps", "version_code", "run_id", "256")
+CHART_EXPECTATIONS = {
+    "cpu-multiplier.png": ("cpu_cost", "处理器开销", "相对开销（倍）"),
+    "memory-multiplier.png": ("memory_cost", "进程内存开销", "相对开销（倍）"),
+    "first-output-multiplier.png": ("first_output_cost", "首次输出等待", "相对等待时间（倍）"),
+    "file-size-multiplier.png": ("file_cost", "文件体积", "相对体积（倍）"),
+    "frame-interval-multiplier.png": ("callback_interval", "成功回调间隔", "相对回调间隔（倍）"),
+    "fps-multiplier.png": ("frame_rate", "提交帧率", "相对提交帧率（倍）"),
+}
 
 
 def fixture_rows(versioned=True):
@@ -172,6 +180,20 @@ class MultiplierTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "三个"):
             self.public([row for row in fixture_rows() if row["count"] != "16"])
 
+    def test_missing_metric_columns_are_rejected_before_any_partial_output(self):
+        output = self.root / "incomplete-public"
+        for column in ("first_output_ms", "asset_bytes", "submit_p95_ms", "submitted_fps"):
+            with self.subTest(column=column):
+                rows = fixture_rows()
+                for row in rows:
+                    row.pop(column)
+                write_input(self.input, rows)
+                with mock.patch.object(ANALYSIS, "plot_metric") as plot:
+                    with self.assertRaisesRegex(ValueError, "缺少完整指标.*全部六张图"):
+                        ANALYSIS.analyze(self.input, output, write_json=True)
+                plot.assert_not_called()
+                self.assertFalse(output.exists())
+
     def test_missing_matplotlib_has_actionable_no_install_error(self):
         public = self.public()
         with mock.patch.dict("sys.modules", {"matplotlib": None}):
@@ -197,7 +219,7 @@ class PublicChartTests(unittest.TestCase):
         self.rows = fixture_rows()
         write_input(self.input, self.rows)
 
-    def test_two_clean_chinese_charts_no_markdown_csv_or_json_by_default(self):
+    def test_all_six_clean_chinese_charts_no_markdown_csv_or_json_by_default(self):
         from matplotlib.figure import Figure
         from matplotlib.text import Text
         original_savefig = Figure.savefig
@@ -212,7 +234,11 @@ class PublicChartTests(unittest.TestCase):
         def check_and_save(figure, destination, **kwargs):
             """在真实 PNG 保存前检查可读性和隐私。 / Checks readability and privacy before saving the real PNG."""
             self.assertEqual(len(figure.axes), 1)
+            name = Path(destination).name
+            key, title, ylabel = CHART_EXPECTATIONS[name]
             axis = figure.axes[0]
+            self.assertEqual(axis.get_ylabel(), ylabel)
+            self.assertIn(title + "倍数对比", [text.get_text() for text in figure.texts])
             self.assertEqual([tick.get_text() for tick in axis.get_xticklabels()], list(ANALYSIS.LOADS))
             self.assertEqual(list(axis.lines[0].get_ydata()), [1, 1, 1])
             self.assertEqual([text.get_text() for text in figure.legends[0].texts], ["KAP·alpha01", "VAP·alpha01"])
@@ -221,15 +247,31 @@ class PublicChartTests(unittest.TestCase):
                 self.assertNotIn(token.lower(), texts.lower())
             self.assertIn("有效 2/3", texts)
             self.assertIn("每档 KAP = 1×", texts)
-            self.assertIn("越低越好", texts)
-            self.assertIn("相对开销（倍）", texts)
+            direction = "越高越好" if key == "frame_rate" else "越低越好"
+            self.assertIn(direction, texts)
+            self.assertNotIn("越低越好" if key == "frame_rate" else "越高越好", texts)
             self.assertTrue(any(len(item.get_facecolors()) == 0 for item in axis.collections))
-            captured.append(Path(destination).name)
+            if key == "file_cost":
+                labels = [text for text in axis.texts if text.get_text().startswith("0.05×")]
+                self.assertEqual(len(labels), 3)
+                figure.canvas.draw()
+                for label in labels:
+                    self.assertEqual(label.xy[1], 0.05)
+                    self.assertGreater(label.get_position()[1], 0)
+                    self.assertEqual(label.get_verticalalignment(), "bottom")
+                    self.assertGreater(label.get_window_extent().y0, axis.bbox.y0)
+            if key == "memory_cost":
+                baseline = [text for text in axis.texts if text.get_text() == "1.00×"]
+                comparison = [text for text in axis.texts if text.get_text().startswith(("0.80×", "0.90×", "1.10×"))]
+                self.assertEqual([text.get_position()[1] > 0 for text in baseline], [True, True, False])
+                self.assertEqual([text.get_position()[1] > 0 for text in comparison], [False, False, True])
+            captured.append(name)
             original_savefig(figure, destination, **kwargs)
 
         with mock.patch.object(Figure, "savefig", check_and_save):
             ANALYSIS.analyze(self.input, self.output)
-        self.assertEqual(set(captured), {"cpu-multiplier.png", "memory-multiplier.png"})
+        self.assertEqual(len(captured), 6)
+        self.assertEqual(set(captured), set(CHART_EXPECTATIONS))
         self.assertEqual({path.name for path in self.output.iterdir()}, set(captured))
         for png in self.output.iterdir():
             self.assertEqual(png.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
@@ -239,6 +281,7 @@ class PublicChartTests(unittest.TestCase):
     def test_missing_endpoint_is_header_warning_not_data_positioned_zero(self):
         from matplotlib.figure import Figure
         original_savefig = Figure.savefig
+        captured = []
         for row in self.rows:
             if row["count"] == "16" and row["asset"].endswith(".mp4"):
                 row.update(valid="false", error="private-native-error", cpu_percent="0", pss_median_mb="0")
@@ -254,17 +297,23 @@ class PublicChartTests(unittest.TestCase):
             self.assertEqual(len(badges), 1)
             self.assertIn("重负载未完成（有效0/3）", badges[0].get_text())
             self.assertGreater(badges[0].get_position()[1], axis.get_position().y1)
+            captured.append(Path(destination).name)
             original_savefig(figure, destination, **kwargs)
 
         with mock.patch.object(Figure, "savefig", check_and_save):
             ANALYSIS.analyze(self.input, self.output)
+        self.assertEqual(len(captured), 6)
+        self.assertEqual(set(captured), set(CHART_EXPECTATIONS))
 
     def test_optional_json_is_ratio_only_and_cli_prints_no_private_configuration(self):
         stream = io.StringIO()
         with contextlib.redirect_stdout(stream):
             result = ANALYSIS.main(["--input", str(self.input), "--output-dir", str(self.output), "--json"])
         self.assertEqual(result, 0)
-        self.assertEqual({path.name for path in self.output.iterdir()}, ANALYSIS.PUBLIC_FILES)
+        self.assertEqual(len(list(self.output.iterdir())), 7)
+        self.assertEqual({path.name for path in self.output.iterdir()}, set(CHART_EXPECTATIONS) | {"ratios.json"})
+        self.assertEqual(ANALYSIS.PUBLIC_FILES, set(CHART_EXPECTATIONS) | {"ratios.json"})
+        self.assertIn("六张相对倍数图", stream.getvalue())
         public = json.loads((self.output / "ratios.json").read_text(encoding="utf-8"))
         text = json.dumps(public, ensure_ascii=False) + stream.getvalue()
         for token in PRIVATE_TOKENS:
@@ -287,7 +336,9 @@ class PublicChartTests(unittest.TestCase):
             public = ANALYSIS.analyze(self.input)
         target = self.root / "prism-motion-results" / "unversioned"
         self.assertEqual(public["version"], "未版本化")
-        self.assertEqual({path.name for path in target.iterdir()}, {name for _, name in ANALYSIS.CHARTS})
+        self.assertEqual(len(list(target.iterdir())), 6)
+        self.assertEqual({path.name for path in target.iterdir()}, set(CHART_EXPECTATIONS))
+        self.assertEqual({name for _, name in ANALYSIS.CHARTS}, set(CHART_EXPECTATIONS))
         self.assertFalse((self.root / "prism-motion-results" / "alpha01").exists())
 
     def test_io_errors_do_not_print_private_paths(self):

@@ -26,7 +26,22 @@ METRICS = (
     ("callback_interval", "submit_p95_ms", "成功回调间隔", "lower_is_better"),
     ("frame_rate", "submitted_fps", "提交帧率", "higher_is_better"),
 )
-CHARTS = (("cpu_cost", "cpu-multiplier.png"), ("memory_cost", "memory-multiplier.png"))
+CHARTS = (
+    ("cpu_cost", "cpu-multiplier.png"),
+    ("memory_cost", "memory-multiplier.png"),
+    ("first_output_cost", "first-output-multiplier.png"),
+    ("file_cost", "file-size-multiplier.png"),
+    ("callback_interval", "frame-interval-multiplier.png"),
+    ("frame_rate", "fps-multiplier.png"),
+)
+AXIS_LABELS = {
+    "cpu_cost": "相对开销（倍）",
+    "memory_cost": "相对开销（倍）",
+    "first_output_cost": "相对等待时间（倍）",
+    "file_cost": "相对体积（倍）",
+    "callback_interval": "相对回调间隔（倍）",
+    "frame_rate": "相对提交帧率（倍）",
+}
 PUBLIC_FILES = {filename for _, filename in CHARTS} | {"ratios.json"}
 COLORS = {"KAP": "#4967E8", "VAP": "#E6535E"}
 
@@ -213,13 +228,16 @@ def plot_metric(public, metric_key, destination):
                         label += f" · 基准 {point['reference_valid']}/{point['reference_total']}"
                 comparison = metric["series"][1]["points"][index]["multiplier"]
                 above = (comparison is not None and comparison < 1) if engine == "KAP" else value >= 1
+                # 小倍数标签留在图内，避免文件体积等指标挤入横轴。 / Keeps small-ratio labels inside the plot instead of colliding with load labels.
+                if value < maximum * 0.18:
+                    above = True
                 axis.annotate(label, (index, value), xytext=(0, 14 if above else -25), textcoords="offset points", ha="center",
                               va="bottom" if above else "top", fontproperties=font, fontsize=13,
                               color=COLORS[engine], fontweight="bold", bbox={"facecolor": "white", "edgecolor": "none", "pad": 1.1})
         axis.set_xlim(-0.2, 2.2)
         axis.set_ylim(0, maximum * 1.32)
         axis.set_xticks(range(3), LOADS, fontproperties=bold, fontsize=17)
-        axis.set_ylabel("相对开销（倍）", fontproperties=font, fontsize=15, labelpad=14)
+        axis.set_ylabel(AXIS_LABELS[metric_key], fontproperties=font, fontsize=15, labelpad=14)
         axis.yaxis.set_major_locator(locator(nbins=5, min_n_ticks=4))
         axis.yaxis.set_major_formatter(formatter(lambda value, _: f"{value:g}×"))
         for tick in axis.get_yticklabels():
@@ -242,6 +260,14 @@ def plot_metric(public, metric_key, destination):
         note = "仅当前项目，非综合性能、等吞吐或等画质结论。"
         if metric_key == "memory_cost":
             note += " 进程内存口径，不等于完整图形显存。"
+        elif metric_key == "first_output_cost":
+            note += " 场景挂载至输出观察，不是物理扫描延迟。"
+        elif metric_key == "file_cost":
+            note += " 单个资源文件体积，不随负载相乘。"
+        elif metric_key == "callback_interval":
+            note += " 基于呈现回调间隔 p95，不是屏幕扫描时间。"
+        elif metric_key == "frame_rate":
+            note += " 提交回调计数，不是物理屏幕扫描帧率。"
         fig.text(0.09, 0.065, note, fontproperties=font, fontsize=11, color="#8B93A0")
         fig.savefig(destination, dpi=180, facecolor="white", metadata={"Software": "Relative multiplier chart"})
     finally:
@@ -249,9 +275,11 @@ def plot_metric(public, metric_key, destination):
 
 
 def analyze(input_path, output_dir=None, size=None, write_json=False):
-    """仅在项目外输出两张图，可选仅倍数 JSON。 / Writes only two charts outside the project, plus optional ratio-only JSON."""
+    """仅在项目外输出六项指标图，可选仅倍数 JSON。 / Writes all six metric charts outside the project, plus optional ratio-only JSON."""
     input_path = Path(input_path).resolve()
     public = build_public(read_trials(input_path), size)
+    if any(key not in public["metrics"] for key, _ in CHARTS):
+        raise ValueError("输入缺少完整指标，无法生成全部六张图。")
     if output_dir is None:
         folder = "unversioned" if public["version"] == "未版本化" else public["version"]
         output_dir = Path.home() / "prism-motion-results" / folder
@@ -287,7 +315,7 @@ def main(argv=None):
         message = "无法读取输入或写入公开图像。" if isinstance(error, OSError) else str(error)
         print(f"分析未完成：{message}", file=sys.stderr)
         return 1
-    print("已生成两张相对倍数图。" + (" 已附仅倍数数据。" if args.json else ""))
+    print("已生成全部六张相对倍数图。" + (" 已附仅倍数数据。" if args.json else ""))
     return 0
 
 
