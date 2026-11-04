@@ -1,23 +1,29 @@
 plugins {
-    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.compose.multiplatform)
+    alias(libs.plugins.android.kmp.library)
 }
 
-android {
-    namespace = "com.zxhhyj.prism.motion.engine.kap"
-    compileSdk = 37
-
-    defaultConfig {
-        minSdk = 33
+kotlin {
+    jvm()
+    android {
+        namespace = "com.zxhhyj.prism.motion.engine.kap"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+        compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
     }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+    sourceSets {
+        commonMain.dependencies {
+            api(projects.prismMotionCompose)
+            api(compose.foundation)
+            implementation(libs.kotlinx.coroutines.core)
+        }
+        androidMain.dependencies {
+            api(libs.kap.compose)
+        }
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
-}
-
-dependencies {
-    api(projects.prismMotionCompose)
-    api(libs.kap.compose)
 }

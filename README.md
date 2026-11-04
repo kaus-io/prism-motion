@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `prism-motion-core` | Android + JVM（KMP） | 源、请求、引擎、注册表、输出面、状态契约；无 Compose |
 | `prism-motion-compose` | Android + JVM（Compose Multiplatform） | `AnimationOutput` / `AnimationRenderer` / `AnimationState` / `Animation()` |
-| `prism-motion-engine-kap` | Android | KAP（KTX2 + Vulkan）引擎；上游 ktxanim 无 JVM 产物 |
+| `prism-motion-engine-kap` | Android + JVM | KAP 引擎：Android 走 KTX2+Vulkan，JVM 走自研解码 + Compose 绘制 |
 | `prism-motion-engine-vap` | Android + JVM | VAP 引擎（Android 走 MediaCodec，JVM 走 vap 的 bytedeco+skiko 实现） |
 | `prism-motion-probe` | JVM + Kotlin/Native | MP4 / KTX2 容器探测与校验，不解码 |
 | `prism-motion-utils` | JVM + Kotlin/Native | 平台工具：文件读写（kotlinx-io）、进程、env、临时目录、可执行路径 |
@@ -124,8 +124,9 @@ git submodule update --init --recursive
 
 ## 已知限制
 
-- `engine-kap` 仍是 Android-only：上游 `com.kaus-io:ktxanim-*` 只有 Android 产物，渲染依赖 Vulkan。
-  `compose` 与 `engine-vap` 已经同时支持 Android 和 JVM（Compose Multiplatform）。
+- `engine-kap` 的 JVM 实现是自己写的：KTX2 解析 + 帧解码，RGBA8 直接读像素，
+  ASTC 需要外部 `astcenc`（`-dl` 解压，查找顺序 `PRISM_MOTION_ASTCENC` > `~/.cache/prism-motion/tools/astcenc` > PATH）。
+- `compose`、`engine-vap`、`engine-kap` 都已同时支持 Android 和 JVM（Compose Multiplatform）。
 - Windows 产物只做了交叉编译验证，没有真机 / wine 运行；且缺少 stb_image / OpenH264 的 mingw 交叉编译，
   因此 PNG 解码与 H.264 编码在 Windows 上会明确报错（其它命令正常）。
 - macOS 目标只能在 macOS 主机上构建。
