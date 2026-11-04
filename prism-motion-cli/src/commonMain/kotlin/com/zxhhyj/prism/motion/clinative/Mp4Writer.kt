@@ -1,12 +1,13 @@
-package com.zxhhyj.prism.motion.format
+package com.zxhhyj.prism.motion.clinative
 
+import com.zxhhyj.prism.motion.format.Bytes
 /**
  * 最小 MP4 封装：单个视频轨、AVC（H.264）、恒定帧率、每个样本一个 NAL 组。
  * 只写 VAP 需要的字段，不做编辑列表、B 帧重排或音频。
  */
-public object Mp4Writer {
+internal object Mp4Writer {
 
-    public fun write(width: Int, height: Int, fps: Int, stream: AvcStream): ByteArray {
+    fun write(width: Int, height: Int, fps: Int, stream: AvcStream): ByteArray {
         val samples = stream.samples
         require(samples.isNotEmpty()) { "没有样本" }
         val durationMs = samples.size * 1000L / fps
