@@ -1,6 +1,6 @@
 package com.zxhhyj.prism.motion.clinative
 
-import com.zxhhyj.prism.motion.AnimationFormat
+import com.zxhhyj.prism.motion.PrismMotionFormat
 import com.zxhhyj.prism.motion.probe.AnimationProbe
 import com.zxhhyj.prism.motion.probe.ProbeIssue
 import com.zxhhyj.prism.motion.probe.ProbeResult
@@ -13,14 +13,14 @@ internal object ProbeCmd {
 
     private data class EngineInfo(
         val id: String,
-        val format: AnimationFormat,
+        val format: PrismMotionFormat,
         val decode: List<String>,
         val encode: List<String>,
     )
 
     private val ENGINES = listOf(
-        EngineInfo("Vap", AnimationFormat.Vap, decode = listOf("android"), encode = listOf("linuxX64")),
-        EngineInfo("Kap", AnimationFormat.Kap, decode = listOf("android"), encode = listOf("linuxX64")),
+        EngineInfo("Vap", PrismMotionFormat.Vap, decode = listOf("android"), encode = listOf("linuxX64")),
+        EngineInfo("Kap", PrismMotionFormat.Kap, decode = listOf("android"), encode = listOf("linuxX64")),
     )
 
     fun engines(asJson: Boolean): Int {
@@ -103,12 +103,12 @@ internal object ProbeCmd {
 
     private fun checkOne(path: String): ProbeResult {
         val result = safeProbe(path)
-        if (AnimationFormat.ofFileName(fileName(path)) == null) {
+        if (PrismMotionFormat.ofFileName(fileName(path)) == null) {
             return result.copy(
                 issues = result.issues + ProbeIssue(
                     ProbeSeverity.Error,
                     "unsupported-format",
-                    "后缀不认识，只支持 ${AnimationFormat.entries.joinToString("/") { it.suffix }}",
+                    "后缀不认识，只支持 ${PrismMotionFormat.entries.joinToString("/") { it.suffix }}",
                 ),
             )
         }
@@ -135,7 +135,7 @@ internal object ProbeCmd {
             val path = "$root/$name"
             if (Platform.isDirectory(path)) {
                 walk(path, out)
-            } else if (AnimationFormat.ofFileName(name) != null) {
+            } else if (PrismMotionFormat.ofFileName(name) != null) {
                 out += path
             }
         }

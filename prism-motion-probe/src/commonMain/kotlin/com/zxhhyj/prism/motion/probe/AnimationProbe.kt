@@ -1,6 +1,6 @@
 package com.zxhhyj.prism.motion.probe
 
-import com.zxhhyj.prism.motion.AnimationFormat
+import com.zxhhyj.prism.motion.PrismMotionFormat
 import com.zxhhyj.prism.motion.ktx.KtxReader
 
 /** 按容器魔数识别格式，再抽元数据；不做解码，JVM 与 Kotlin/Native 共用。 */
@@ -20,7 +20,7 @@ public object AnimationProbe {
     public fun probe(bytes: ByteArray, fileName: String): ProbeResult {
         val sha256 = Sha256.hex(bytes)
         val byMagic = sniff(bytes)
-        val bySuffix = AnimationFormat.ofFileName(fileName)
+        val bySuffix = PrismMotionFormat.ofFileName(fileName)
         val issues = ArrayList<ProbeIssue>()
 
         if (byMagic == null) {
@@ -39,7 +39,7 @@ public object AnimationProbe {
 
         val format = byMagic ?: bySuffix
         return when (byMagic) {
-            AnimationFormat.Vap -> {
+            PrismMotionFormat.Vap -> {
                 val facts = Mp4Probe.probe(bytes)
                 issues += facts.issues
                 ProbeResult(
@@ -58,7 +58,7 @@ public object AnimationProbe {
                 )
             }
 
-            AnimationFormat.Kap -> {
+            PrismMotionFormat.Kap -> {
                 val facts = probeKtx2(bytes)
                 issues += facts.issues
                 ProbeResult(
@@ -89,7 +89,7 @@ public object AnimationProbe {
     private fun probeKtx2(bytes: ByteArray): KtxFacts {
         if (!KtxReader.isKtx(bytes)) {
             return KtxFacts(null, null, null, null, null, emptyMap(),
-                listOf(ProbeIssue(ProbeSeverity.Error, "not-ktx2", "缺少 KTX2 魔数")),
+                listOf(ProbeIssue(ProbeSeverity.Error, "not-ktx", "缺少 KTX2 魔数")),
             )
         }
         return runCatching { KtxReader.read(bytes) }.fold(
@@ -111,15 +111,15 @@ public object AnimationProbe {
             },
             onFailure = { error ->
                 KtxFacts(null, null, null, null, null, emptyMap(),
-                    listOf(ProbeIssue(ProbeSeverity.Error, "bad-ktx2", error.message ?: "KTX2 解析失败")),
+                    listOf(ProbeIssue(ProbeSeverity.Error, "bad-ktx", error.message ?: "KTX2 解析失败")),
                 )
             },
         )
     }
 
-    private fun sniff(bytes: ByteArray): AnimationFormat? = when {
-        KtxReader.isKtx(bytes) -> AnimationFormat.Kap
-        Mp4Probe.isVapLike(bytes) -> AnimationFormat.Vap
+    private fun sniff(bytes: ByteArray): PrismMotionFormat? = when {
+        KtxReader.isKtx(bytes) -> PrismMotionFormat.Kap
+        Mp4Probe.isVapLike(bytes) -> PrismMotionFormat.Vap
         else -> null
     }
 

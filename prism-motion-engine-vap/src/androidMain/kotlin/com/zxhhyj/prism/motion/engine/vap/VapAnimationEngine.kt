@@ -1,6 +1,6 @@
 package com.zxhhyj.prism.motion.engine.vap
 
-import com.zxhhyj.prism.motion.AnimationSurface
+import com.zxhhyj.prism.motion.PrismMotionSurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -9,13 +9,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import com.zxhhyj.prism.motion.compose.AnimationRegistry
-import com.zxhhyj.prism.motion.compose.AnimationRenderer
-import com.zxhhyj.prism.motion.compose.AnimationState
-import com.zxhhyj.prism.motion.AnimationEngine
-import com.zxhhyj.prism.motion.AnimationEngineId
-import com.zxhhyj.prism.motion.AnimationResource
-import com.zxhhyj.prism.motion.AnimationSource
+import com.zxhhyj.prism.motion.compose.PrismMotionRegistry
+import com.zxhhyj.prism.motion.compose.PrismMotionRenderer
+import com.zxhhyj.prism.motion.compose.PrismMotionState
+import com.zxhhyj.prism.motion.PrismMotionEngine
+import com.zxhhyj.prism.motion.PrismMotionEngineId
+import com.zxhhyj.prism.motion.PrismMotionResource
+import com.zxhhyj.prism.motion.PrismMotionSource
 import com.zxhhyj.vap.player.VapAnimation
 import com.zxhhyj.vap.player.VapAnimationState
 import com.zxhhyj.vap.player.VapComposition
@@ -25,20 +25,20 @@ import com.zxhhyj.vap.player.animateVapCompositionAsState
 import com.zxhhyj.vap.player.loadVapCompositionAsync
 
 /** VAP（MP4 + alpha，MediaCodec）作为统一门面的引擎实现。 */
-public class VapAnimationEngine : AnimationEngine {
-    override val id: AnimationEngineId = AnimationEngineId.Vap
+public class PrismMotionVapEngine : PrismMotionEngine {
+    override val id: PrismMotionEngineId = PrismMotionEngineId.Vap
 
-    override fun supports(source: AnimationSource): Boolean = when (source) {
-        is AnimationSource.Asset -> source.path.endsWith(MP4_SUFFIX, ignoreCase = true)
-        is AnimationSource.File -> source.path.endsWith(MP4_SUFFIX, ignoreCase = true)
-        is AnimationSource.Bytes -> true
+    override fun supports(source: PrismMotionSource): Boolean = when (source) {
+        is PrismMotionSource.Asset -> source.path.endsWith(MP4_SUFFIX, ignoreCase = true)
+        is PrismMotionSource.File -> source.path.endsWith(MP4_SUFFIX, ignoreCase = true)
+        is PrismMotionSource.Bytes -> true
     }
 
-    override suspend fun open(source: AnimationSource): AnimationResource {
+    override suspend fun open(source: PrismMotionSource): PrismMotionResource {
         val spec = when (source) {
-            is AnimationSource.Asset -> VapCompositionSpec.Asset(source.path)
-            is AnimationSource.File -> VapCompositionSpec.File(source.path)
-            is AnimationSource.Bytes -> VapCompositionSpec.Bytes(source.bytes)
+            is PrismMotionSource.Asset -> VapCompositionSpec.Asset(source.path)
+            is PrismMotionSource.File -> VapCompositionSpec.File(source.path)
+            is PrismMotionSource.Bytes -> VapCompositionSpec.Bytes(source.bytes)
         }
         return VapAnimationResource(loadVapCompositionAsync(spec))
     }
@@ -48,7 +48,7 @@ public class VapAnimationEngine : AnimationEngine {
     }
 }
 
-private class VapAnimationResource(val composition: VapComposition) : AnimationResource {
+private class VapAnimationResource(val composition: VapComposition) : PrismMotionResource {
     /** 播放开关提升为 Compose 状态，交给 VAP 自己的暖待机切换。 */
     var playing by mutableStateOf(true)
 
@@ -68,7 +68,7 @@ private class VapAnimationResource(val composition: VapComposition) : AnimationR
     override val isPlaying: Boolean get() = player?.isPlaying == true
 
     // 目前只支持 TextureView 宿主：Surface 由 [VapAnimation] 自己持有。
-    override fun attach(surface: AnimationSurface, width: Int, height: Int) = Unit
+    override fun attach(surface: PrismMotionSurface, width: Int, height: Int) = Unit
     override fun resize(width: Int, height: Int) = Unit
     override fun detach() = Unit
 
@@ -87,9 +87,9 @@ private class VapAnimationResource(val composition: VapComposition) : AnimationR
 }
 
 /** 用 VAP 的统一渲染器；宿主仍是 [VapAnimation] 自己的 Surface / Canvas 路径。 */
-public object VapAnimationRenderer : AnimationRenderer {
+public object PrismMotionVapRenderer : PrismMotionRenderer {
     @Composable
-    override fun Render(state: AnimationState, modifier: Modifier, contentScale: ContentScale) {
+    override fun Render(state: PrismMotionState, modifier: Modifier, contentScale: ContentScale) {
         val resource = state.resource as? VapAnimationResource ?: return
         val player = animateVapCompositionAsState(
             composition = resource.composition,
@@ -106,9 +106,9 @@ public object VapAnimationRenderer : AnimationRenderer {
 
 /** 便捷入口：只注册 VAP 一个引擎。 */
 @Composable
-public fun rememberVapAnimationRegistry(): AnimationRegistry = remember {
-    AnimationRegistry(
-        engines = listOf(VapAnimationEngine()),
-        renderers = mapOf(AnimationEngineId.Vap to VapAnimationRenderer),
+public fun rememberPrismMotionVapRegistry(): PrismMotionRegistry = remember {
+    PrismMotionRegistry(
+        engines = listOf(PrismMotionVapEngine()),
+        renderers = mapOf(PrismMotionEngineId.Vap to PrismMotionVapRenderer),
     )
 }

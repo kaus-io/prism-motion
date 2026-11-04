@@ -12,8 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import com.zxhhyj.prism.motion.AnimationResource
-import com.zxhhyj.prism.motion.AnimationSurface
+import com.zxhhyj.prism.motion.PrismMotionResource
+import com.zxhhyj.prism.motion.PrismMotionSurface
 import kotlinx.coroutines.delay
 import java.awt.image.BufferedImage
 
@@ -26,7 +26,7 @@ public abstract class JvmFrameResource(
     public val frameHeight: Int,
     public val frameCount: Int,
     public val fps: Int,
-) : AnimationResource {
+) : PrismMotionResource {
 
     public var frameIndex: Int by mutableStateOf(0)
         private set
@@ -58,7 +58,7 @@ public abstract class JvmFrameResource(
     override val progress: Float get() = frameIndex.toFloat() / frameCount
     override val isPlaying: Boolean get() = playingState
 
-    override fun attach(surface: AnimationSurface, width: Int, height: Int) = Unit
+    override fun attach(surface: PrismMotionSurface, width: Int, height: Int) = Unit
     override fun resize(width: Int, height: Int) = Unit
     override fun detach() = Unit
 
@@ -85,10 +85,10 @@ public abstract class JvmFrameResource(
  * JVM 渲染器基类：把当前帧画出来，并用协程按 fps 推进。
  * JVM renderer base: draws the current frame and advances it at `fps`.
  */
-public abstract class JvmFrameRenderer : AnimationRenderer {
+public abstract class JvmFrameRenderer : PrismMotionRenderer {
 
     @Composable
-    override fun Render(state: AnimationState, modifier: Modifier, contentScale: ContentScale) {
+    override fun Render(state: PrismMotionState, modifier: Modifier, contentScale: ContentScale) {
         val resource = state.resource as? JvmFrameResource ?: return
         val bitmap = remember(resource, resource.frameIndex) { resource.currentBitmap() }
         Image(bitmap = bitmap, contentDescription = null, modifier = modifier, contentScale = contentScale)

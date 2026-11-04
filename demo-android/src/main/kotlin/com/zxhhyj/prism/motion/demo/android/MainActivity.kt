@@ -34,16 +34,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.zxhhyj.prism.motion.AnimationRequest
-import com.zxhhyj.prism.motion.AnimationSource
-import com.zxhhyj.prism.motion.compose.Animation
-import com.zxhhyj.prism.motion.compose.AnimationRegistry
-import com.zxhhyj.prism.motion.compose.rememberAnimationState
-import com.zxhhyj.prism.motion.AnimationEngineId
-import com.zxhhyj.prism.motion.engine.kap.KapAnimationEngine
-import com.zxhhyj.prism.motion.engine.kap.KapAnimationRenderer
-import com.zxhhyj.prism.motion.engine.vap.VapAnimationEngine
-import com.zxhhyj.prism.motion.engine.vap.VapAnimationRenderer
+import com.zxhhyj.prism.motion.PrismMotionRequest
+import com.zxhhyj.prism.motion.PrismMotionSource
+import com.zxhhyj.prism.motion.compose.PrismMotion
+import com.zxhhyj.prism.motion.compose.PrismMotionRegistry
+import com.zxhhyj.prism.motion.compose.rememberPrismMotionState
+import com.zxhhyj.prism.motion.PrismMotionEngineId
+import com.zxhhyj.prism.motion.engine.kap.PrismMotionKapEngine
+import com.zxhhyj.prism.motion.engine.kap.PrismMotionKapRenderer
+import com.zxhhyj.prism.motion.engine.vap.PrismMotionVapEngine
+import com.zxhhyj.prism.motion.engine.vap.PrismMotionVapRenderer
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -63,17 +63,17 @@ class MainActivity : ComponentActivity() {
 /** 资产列表：来自 assets 根目录，命名与桌面版一致。 / Asset names from the assets root. */
 fun listAssets(context: Context): List<String> =
     context.assets.list("").orEmpty()
-        .filter { it.endsWith(".mp4") || it.endsWith(".ktx2") }
+        .filter { it.endsWith(".mp4") || it.endsWith(".ktx") }
         .sorted()
 
 /** 桌面版同款：两个引擎 + 各自的渲染器。 / Same as the desktop demo: both engines. */
 @Composable
-fun rememberDemoRegistry(context: Context): AnimationRegistry = remember(context) {
-    AnimationRegistry(
-        engines = listOf(VapAnimationEngine(), KapAnimationEngine(context)),
+fun rememberDemoRegistry(context: Context): PrismMotionRegistry = remember(context) {
+    PrismMotionRegistry(
+        engines = listOf(PrismMotionVapEngine(), PrismMotionKapEngine(context)),
         renderers = mapOf(
-            AnimationEngineId.Vap to VapAnimationRenderer,
-            AnimationEngineId.Kap to KapAnimationRenderer,
+            PrismMotionEngineId.Vap to PrismMotionVapRenderer,
+            PrismMotionEngineId.Kap to PrismMotionKapRenderer,
         ),
     )
 }
@@ -123,11 +123,11 @@ fun DemoApp(context: Context) {
             items(count) { item ->
                 key(item) {
                     val asset = assets.getOrNull(index)
-                    val state = rememberAnimationState(
-                        remember(asset, item) { AnimationRequest(AnimationSource.Asset(asset.orEmpty())) },
+                    val state = rememberPrismMotionState(
+                        remember(asset, item) { PrismMotionRequest(PrismMotionSource.Asset(asset.orEmpty())) },
                         registry,
                     )
-                    Animation(state, modifier = Modifier.fillMaxWidth().padding(2.dp), contentScale = ContentScale.Fit)
+                    PrismMotion(state, modifier = Modifier.fillMaxWidth().padding(2.dp), contentScale = ContentScale.Fit)
                 }
             }
         }
@@ -177,11 +177,11 @@ fun BenchScreen(context: Context, only: String?) {
         LazyVerticalGrid(columns = GridCells.Adaptive(120.dp), modifier = Modifier.fillMaxSize()) {
             items(count) { item ->
                 key(item) {
-                    val state = rememberAnimationState(
-                        remember(index, item) { AnimationRequest(AnimationSource.Asset(asset)) },
+                    val state = rememberPrismMotionState(
+                        remember(index, item) { PrismMotionRequest(PrismMotionSource.Asset(asset)) },
                         registry,
                     )
-                    Animation(state, modifier = Modifier.fillMaxWidth().padding(2.dp), contentScale = ContentScale.Fit)
+                    PrismMotion(state, modifier = Modifier.fillMaxWidth().padding(2.dp), contentScale = ContentScale.Fit)
                 }
             }
         }

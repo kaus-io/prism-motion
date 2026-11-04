@@ -7,7 +7,7 @@
 | 模块 | 目标平台 | 作用 |
 | --- | --- | --- |
 | `prism-motion-core` | Android + JVM（KMP） | 源、请求、引擎、注册表、输出面、状态契约；无 Compose |
-| `prism-motion-compose` | Android + JVM（Compose Multiplatform） | `AnimationOutput` / `AnimationRenderer` / `AnimationState` / `Animation()` |
+| `prism-motion-compose` | Android + JVM（Compose Multiplatform） | `PrismMotionOutput` / `PrismMotionRenderer` / `PrismMotionState` / `Animation()` |
 | `prism-motion-engine-kap` | Android + JVM | KAP 引擎：Android 走 KTX2+Vulkan，JVM 走自研解码 + Compose 绘制 |
 | `prism-motion-engine-vap` | Android + JVM | VAP 引擎（Android 走 MediaCodec；JVM 走自有 MP4 解封装 + OpenH264 解码） |
 | `prism-motion-probe` | JVM + Kotlin/Native | MP4 / KTX2 容器探测与校验，不解码 |
@@ -23,12 +23,12 @@
 ## 契约
 
 - 引擎只负责“能否打开”和“如何打开”：`supports(source)` / `open(source)`。
-- 打开后是 `AnimationResource`：尺寸、时长、进度、`attach(AnimationSurface)` / `detach()`。
-- `AnimationSurface` 平台无关：Android 传 `AndroidAnimationSurface(Surface)`，
-  JVM 传 `HeadlessAnimationSurface`；宿主（TextureView / SurfaceView / 外部 Surface）由调用方选择。
-- 加载失败是 `AnimationStatus.Failed` 状态，不向组合抛异常；取消异常照常上抛。
+- 打开后是 `PrismMotionResource`：尺寸、时长、进度、`attach(PrismMotionSurface)` / `detach()`。
+- `PrismMotionSurface` 平台无关：Android 传 `AndroidPrismMotionSurface(Surface)`，
+  JVM 传 `HeadlessPrismMotionSurface`；宿主（TextureView / SurfaceView / 外部 Surface）由调用方选择。
+- 加载失败是 `PrismMotionStatus.Failed` 状态，不向组合抛异常；取消异常照常上抛。
 - 引擎显式指定优先，否则按 `supports` 选择，**不做跨引擎静默降级**。
-- 目前只实现 `AnimationOutput.TextureView`；其余宿主会明确失败，不静默退回其它合成方式。
+- 目前只实现 `PrismMotionOutput.TextureView`；其余宿主会明确失败，不静默退回其它合成方式。
 
 ## 演示与基准
 
@@ -70,8 +70,8 @@ adb pull /sdcard/Android/data/com.zxhhyj.prism.motion.demo.android/files/bench.c
 
 资产目录默认是 `../demo-data`，可用 `-PdemoAssets=<dir>` 指向别的目录。
 
-资产命名：`{alpha|opaque}-{size}-{quality}.{mp4|ktx2}`，例如
-`alpha-512-b6000.mp4`、`opaque-256-rgba8.ktx2`。`--size` / `--count` / `--engine` 可以过滤场景。
+资产命名：`{alpha|opaque}-{size}-{quality}.{mp4|ktx}`，例如
+`alpha-512-b6000.mp4`、`opaque-256-rgba8.ktx`。`--size` / `--count` / `--engine` 可以过滤场景。
 
 ## 构建
 
@@ -110,9 +110,9 @@ CLI 只有一个实现：Kotlin/Native 编译的原生可执行文件，不依�
 
 ```bash
 prism-motion.kexe engines                                  # 引擎与平台支持
-prism-motion.kexe probe assets/a.mp4 assets/b.ktx2         # 读容器元数据
+prism-motion.kexe probe assets/a.mp4 assets/b.ktx         # 读容器元数据
 prism-motion.kexe check assets/                            # 校验整批资源
-prism-motion.kexe pack kap --frames frames/ --out out.ktx2 --fps 24 --format rgba8
+prism-motion.kexe pack kap --frames frames/ --out out.ktx --fps 24 --format rgba8
 prism-motion.kexe pack vap --frames frames/ --out out.mp4 --fps 30
 ```
 

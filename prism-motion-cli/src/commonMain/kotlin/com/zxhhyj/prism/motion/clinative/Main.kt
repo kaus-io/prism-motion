@@ -30,7 +30,7 @@ internal object Cli {
           prism-motion check <path...> [--json]
           prism-motion pack vap --frames <dir> --out <file.mp4> [--fps 30] [--alpha on|off]
                                                     [--scale 0.5] [--ffmpeg ffmpeg]
-          prism-motion pack kap --frames <dir> --out <file.ktx2> [--fps 30]
+          prism-motion pack kap --frames <dir> --out <file.ktx> [--fps 30]
                                                     [--format rgba8|astc-8x8] [--ffmpeg ffmpeg]
                                                     [--astcenc astcenc]
           prism-motion version

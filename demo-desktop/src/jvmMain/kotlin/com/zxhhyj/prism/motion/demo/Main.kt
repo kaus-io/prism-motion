@@ -30,23 +30,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import com.zxhhyj.prism.motion.AnimationEngineId
-import com.zxhhyj.prism.motion.AnimationRequest
-import com.zxhhyj.prism.motion.AnimationSource
-import com.zxhhyj.prism.motion.compose.Animation
-import com.zxhhyj.prism.motion.compose.AnimationRegistry
-import com.zxhhyj.prism.motion.compose.rememberAnimationState
-import com.zxhhyj.prism.motion.engine.kap.KapAnimationEngine
+import com.zxhhyj.prism.motion.PrismMotionEngineId
+import com.zxhhyj.prism.motion.PrismMotionRequest
+import com.zxhhyj.prism.motion.PrismMotionSource
+import com.zxhhyj.prism.motion.compose.PrismMotion
+import com.zxhhyj.prism.motion.compose.PrismMotionRegistry
+import com.zxhhyj.prism.motion.compose.rememberPrismMotionState
+import com.zxhhyj.prism.motion.engine.kap.PrismMotionKapEngine
 import com.zxhhyj.prism.motion.engine.kap.KapJvmRenderer
-import com.zxhhyj.prism.motion.engine.vap.VapAnimationEngine
+import com.zxhhyj.prism.motion.engine.vap.PrismMotionVapEngine
 import com.zxhhyj.prism.motion.engine.vap.VapJvmRenderer
 import kotlin.system.exitProcess
 
-fun demoRegistry(): AnimationRegistry = AnimationRegistry(
-    engines = listOf(VapAnimationEngine(), KapAnimationEngine()),
+fun demoRegistry(): PrismMotionRegistry = PrismMotionRegistry(
+    engines = listOf(PrismMotionVapEngine(), PrismMotionKapEngine()),
     renderers = mapOf(
-        AnimationEngineId.Vap to VapJvmRenderer,
-        AnimationEngineId.Kap to KapJvmRenderer,
+        PrismMotionEngineId.Vap to VapJvmRenderer,
+        PrismMotionEngineId.Kap to KapJvmRenderer,
     ),
 )
 
@@ -111,14 +111,14 @@ fun DemoApp() {
             items(count) { index ->
                 key(index) {
                     val file = asset?.file
-                    val state = rememberAnimationState(
+                    val state = rememberPrismMotionState(
                         remember(asset, index) {
-                            AnimationRequest(AnimationSource.File(file?.absolutePath.orEmpty()))
+                            PrismMotionRequest(PrismMotionSource.File(file?.absolutePath.orEmpty()))
                         },
                         registry,
                     )
                     Box(Modifier.padding(4.dp).fillMaxWidth()) {
-                        Animation(state, contentScale = ContentScale.Fit)
+                        PrismMotion(state, contentScale = ContentScale.Fit)
                     }
                 }
             }

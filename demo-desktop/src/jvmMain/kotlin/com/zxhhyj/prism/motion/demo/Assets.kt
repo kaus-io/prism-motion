@@ -1,17 +1,17 @@
 package com.zxhhyj.prism.motion.demo
 
-import com.zxhhyj.prism.motion.AnimationEngineId
+import com.zxhhyj.prism.motion.PrismMotionEngineId
 import java.io.File
 
 /**
  * 一个演示资产：引擎 × 透明度 × 尺寸 × 质量，全部从文件名解析。
  * One demo asset: engine x transparency x size x quality, parsed from the file name.
  *
- * 命名约定 / naming: `{alpha|opaque}-{size}-{quality}.{mp4|ktx2}`，例如
- * `alpha-512-b6000.mp4`、`opaque-256-rgba8.ktx2`。
+ * 命名约定 / naming: `{alpha|opaque}-{size}-{quality}.{mp4|ktx}`，例如
+ * `alpha-512-b6000.mp4`、`opaque-256-rgba8.ktx`。
  */
 data class AssetInfo(
-    val engine: AnimationEngineId,
+    val engine: PrismMotionEngineId,
     val hasAlpha: Boolean,
     val size: Int,
     val quality: String,
@@ -35,14 +35,14 @@ val demoDataDir: File = run {
 fun discoverAssets(dir: File = demoDataDir): List<AssetInfo> {
     if (!dir.isDirectory) return emptyList()
     return dir.listFiles { file ->
-        file.isFile && (file.name.endsWith(".mp4") || file.name.endsWith(".ktx2"))
+        file.isFile && (file.name.endsWith(".mp4") || file.name.endsWith(".ktx"))
     }.orEmpty().mapNotNull { file ->
         val base = file.name.substringBeforeLast('.')
         val parts = base.split('-')
         if (parts.size != 3) return@mapNotNull null
         val size = parts[1].toIntOrNull() ?: return@mapNotNull null
         AssetInfo(
-            engine = if (file.name.endsWith(".mp4")) AnimationEngineId.Vap else AnimationEngineId.Kap,
+            engine = if (file.name.endsWith(".mp4")) PrismMotionEngineId.Vap else PrismMotionEngineId.Kap,
             hasAlpha = parts[0] == "alpha",
             size = size,
             quality = parts[2],

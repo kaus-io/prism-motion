@@ -72,7 +72,7 @@ tasks.register("generateDemoAssets") {
                 }
                 for (format in formats) {
                     execCli(cliFile, listOf("pack", "kap", "--frames", frameDir.absolutePath,
-                        "--out", File(outDir, "$name-$size-${format.replace("-", "")}.ktx2").absolutePath,
+                        "--out", File(outDir, "$name-$size-${format.replace("-", "")}.ktx").absolutePath,
                         "--fps", "30", "--format", format))
                 }
             }

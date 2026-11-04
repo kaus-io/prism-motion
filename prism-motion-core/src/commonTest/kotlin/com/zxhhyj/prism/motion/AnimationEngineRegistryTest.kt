@@ -4,48 +4,48 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-class AnimationEngineRegistryTest {
+class PrismMotionEngineRegistryTest {
     private class FakeEngine(
-        override val id: AnimationEngineId,
-        private val accepts: (AnimationSource) -> Boolean,
-    ) : AnimationEngine {
-        override fun supports(source: AnimationSource): Boolean = accepts(source)
+        override val id: PrismMotionEngineId,
+        private val accepts: (PrismMotionSource) -> Boolean,
+    ) : PrismMotionEngine {
+        override fun supports(source: PrismMotionSource): Boolean = accepts(source)
 
-        override suspend fun open(source: AnimationSource): AnimationResource =
+        override suspend fun open(source: PrismMotionSource): PrismMotionResource =
             error("not used in this test")
     }
 
-    private val ktx = AnimationSource.Asset("a.ktx2")
-    private val mp4 = AnimationSource.Asset("a.mp4")
-    private val ktxEngine = FakeEngine(AnimationEngineId.Kap) { it === ktx }
-    private val vapEngine = FakeEngine(AnimationEngineId.Vap) { it === mp4 }
-    private val registry = AnimationEngineRegistry(listOf(ktxEngine, vapEngine))
+    private val ktx = PrismMotionSource.Asset("a.ktx")
+    private val mp4 = PrismMotionSource.Asset("a.mp4")
+    private val ktxEngine = FakeEngine(PrismMotionEngineId.Kap) { it === ktx }
+    private val vapEngine = FakeEngine(PrismMotionEngineId.Vap) { it === mp4 }
+    private val registry = PrismMotionEngineRegistry(listOf(ktxEngine, vapEngine))
 
     @Test
     fun picksTheEngineThatSupportsTheSource() {
-        assertEquals(ktxEngine, registry.engineFor(AnimationRequest(ktx)))
-        assertEquals(vapEngine, registry.engineFor(AnimationRequest(mp4)))
+        assertEquals(ktxEngine, registry.engineFor(PrismMotionRequest(ktx)))
+        assertEquals(vapEngine, registry.engineFor(PrismMotionRequest(mp4)))
     }
 
     @Test
     fun explicitEngineWinsWhenItSupportsTheSource() {
-        assertEquals(vapEngine, registry.engineFor(AnimationRequest(mp4, engine = AnimationEngineId.Vap)))
+        assertEquals(vapEngine, registry.engineFor(PrismMotionRequest(mp4, engine = PrismMotionEngineId.Vap)))
     }
 
     @Test
     fun explicitEngineThatDoesNotSupportTheSourceFailsInsteadOfFallingBack() {
-        assertNull(registry.engineFor(AnimationRequest(ktx, engine = AnimationEngineId.Vap)))
+        assertNull(registry.engineFor(PrismMotionRequest(ktx, engine = PrismMotionEngineId.Vap)))
     }
 
     @Test
     fun unknownSourceHasNoEngine() {
-        assertNull(registry.engineFor(AnimationRequest(AnimationSource.Asset("a.gif"))))
+        assertNull(registry.engineFor(PrismMotionRequest(PrismMotionSource.Asset("a.gif"))))
     }
 
     @Test
     fun formatIsRecognisedBySuffix() {
-        assertEquals(AnimationFormat.Vap, AnimationFormat.ofFileName("a.MP4"))
-        assertEquals(AnimationFormat.Kap, AnimationFormat.ofFileName("b.ktx2"))
-        assertNull(AnimationFormat.ofFileName("c.gif"))
+        assertEquals(PrismMotionFormat.Vap, PrismMotionFormat.ofFileName("a.MP4"))
+        assertEquals(PrismMotionFormat.Kap, PrismMotionFormat.ofFileName("b.ktx"))
+        assertNull(PrismMotionFormat.ofFileName("c.gif"))
     }
 }

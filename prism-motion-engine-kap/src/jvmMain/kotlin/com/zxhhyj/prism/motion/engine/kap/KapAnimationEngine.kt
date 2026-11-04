@@ -1,9 +1,9 @@
 package com.zxhhyj.prism.motion.engine.kap
 
-import com.zxhhyj.prism.motion.AnimationEngine
-import com.zxhhyj.prism.motion.AnimationEngineId
-import com.zxhhyj.prism.motion.AnimationResource
-import com.zxhhyj.prism.motion.AnimationSource
+import com.zxhhyj.prism.motion.PrismMotionEngine
+import com.zxhhyj.prism.motion.PrismMotionEngineId
+import com.zxhhyj.prism.motion.PrismMotionResource
+import com.zxhhyj.prism.motion.PrismMotionSource
 import com.zxhhyj.prism.motion.ktx.KtxFormat
 import com.zxhhyj.prism.motion.ktx.KtxReader
 import kotlinx.coroutines.Dispatchers
@@ -25,21 +25,23 @@ internal class KtxAnimation(
  * KAP 引擎的 JVM 实现：KTX2 + ASTC/RGBA8 在 JVM 上软件解码，不依赖 Vulkan。
  * JVM KAP engine: decodes KTX2 + ASTC/RGBA8 in software, no Vulkan required.
  */
-public class KapAnimationEngine : AnimationEngine {
+public class PrismMotionKapEngine : PrismMotionEngine {
 
-    override val id: AnimationEngineId = AnimationEngineId.Kap
+    override val id: PrismMotionEngineId = PrismMotionEngineId.Kap
 
-    override fun supports(source: AnimationSource): Boolean = when (source) {
-        is AnimationSource.Asset -> source.path.endsWith(KTX_SUFFIX, ignoreCase = true)
-        is AnimationSource.File -> source.path.endsWith(KTX_SUFFIX, ignoreCase = true)
-        is AnimationSource.Bytes -> true
+    override fun supports(source: PrismMotionSource): Boolean = when (source) {
+        is PrismMotionSource.Asset -> source.path.endsWith(KTX_SUFFIX, ignoreCase = true) ||
+                source.path.endsWith(KTX_LEGACY_SUFFIX, ignoreCase = true)
+        is PrismMotionSource.File -> source.path.endsWith(KTX_SUFFIX, ignoreCase = true) ||
+                source.path.endsWith(KTX_LEGACY_SUFFIX, ignoreCase = true)
+        is PrismMotionSource.Bytes -> true
     }
 
-    override suspend fun open(source: AnimationSource): AnimationResource {
+    override suspend fun open(source: PrismMotionSource): PrismMotionResource {
         val bytes = when (source) {
-            is AnimationSource.Asset -> error("KAP JVM 不支持 Android asset: ${source.path}")
-            is AnimationSource.File -> File(source.path).readBytes()
-            is AnimationSource.Bytes -> source.bytes
+            is PrismMotionSource.Asset -> error("KAP JVM 不支持 Android asset: ${source.path}")
+            is PrismMotionSource.File -> File(source.path).readBytes()
+            is PrismMotionSource.Bytes -> source.bytes
         }
         val animation = withContext(Dispatchers.IO) { decode(bytes) }
         return KapJvmResource(animation)
@@ -62,6 +64,7 @@ public class KapAnimationEngine : AnimationEngine {
     }
 
     private companion object {
-        const val KTX_SUFFIX = ".ktx2"
+        const val KTX_SUFFIX = ".ktx"
+        const val KTX_LEGACY_SUFFIX = ".ktx2"
     }
 }

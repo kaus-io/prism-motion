@@ -21,13 +21,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import com.zxhhyj.prism.motion.AnimationRequest
-import com.zxhhyj.prism.motion.AnimationSource
-import com.zxhhyj.prism.motion.compose.Animation
-import com.zxhhyj.prism.motion.compose.AnimationRegistry
-import com.zxhhyj.prism.motion.compose.rememberAnimationState
-import com.zxhhyj.prism.motion.engine.kap.KapAnimationEngine
-import com.zxhhyj.prism.motion.engine.vap.VapAnimationEngine
+import com.zxhhyj.prism.motion.PrismMotionRequest
+import com.zxhhyj.prism.motion.PrismMotionSource
+import com.zxhhyj.prism.motion.compose.PrismMotion
+import com.zxhhyj.prism.motion.compose.PrismMotionRegistry
+import com.zxhhyj.prism.motion.compose.rememberPrismMotionState
+import com.zxhhyj.prism.motion.engine.kap.PrismMotionKapEngine
+import com.zxhhyj.prism.motion.engine.vap.PrismMotionVapEngine
 import java.io.File
 import kotlin.system.exitProcess
 
@@ -164,13 +164,13 @@ private fun BenchHost(scenarios: List<Scenario>, results: ArrayList<BenchResult>
         LazyVerticalGrid(columns = GridCells.Adaptive(160.dp), modifier = Modifier.fillMaxSize()) {
             items(scenario.count) { item ->
                 key(item) {
-                    val state = rememberAnimationState(
+                    val state = rememberPrismMotionState(
                         remember(scenario, item) {
-                            AnimationRequest(AnimationSource.File(scenario.asset.file.absolutePath))
+                            PrismMotionRequest(PrismMotionSource.File(scenario.asset.file.absolutePath))
                         },
                         registry,
                     )
-                    Animation(state, contentScale = ContentScale.Fit)
+                    PrismMotion(state, contentScale = ContentScale.Fit)
                 }
             }
         }
@@ -195,14 +195,14 @@ private fun runLoad(args: Array<String>) {
             for (count in counts) {
                 kotlinx.coroutines.runBlocking {
                     val engine = when (asset.engine) {
-                        com.zxhhyj.prism.motion.AnimationEngineId.Vap -> VapAnimationEngine()
-                        com.zxhhyj.prism.motion.AnimationEngineId.Kap -> KapAnimationEngine()
+                        com.zxhhyj.prism.motion.PrismMotionEngineId.Vap -> PrismMotionVapEngine()
+                        com.zxhhyj.prism.motion.PrismMotionEngineId.Kap -> PrismMotionKapEngine()
                     }
                     System.gc()
                     val rssBefore = Memory.rssMb()
                     val start = System.nanoTime()
                     val resources = List(count) {
-                        engine.open(com.zxhhyj.prism.motion.AnimationSource.File(asset.file.absolutePath))
+                        engine.open(com.zxhhyj.prism.motion.PrismMotionSource.File(asset.file.absolutePath))
                     }
                     val openMs = (System.nanoTime() - start) / 1_000_000
                     val bitmapStart = System.nanoTime()

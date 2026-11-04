@@ -1,6 +1,6 @@
 package com.zxhhyj.prism.motion.probe
 
-import com.zxhhyj.prism.motion.AnimationFormat
+import com.zxhhyj.prism.motion.PrismMotionFormat
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -13,7 +13,7 @@ class AnimationProbeTest {
     fun readsVapMetadataFromTheVapcBox() {
         val result = AnimationProbe.probe(vapFile(), "clip.mp4")
 
-        assertEquals(AnimationFormat.Vap, result.format)
+        assertEquals(PrismMotionFormat.Vap, result.format)
         assertEquals(100, result.width)
         assertEquals(200, result.height)
         assertEquals(60, result.frameCount)
@@ -27,7 +27,7 @@ class AnimationProbeTest {
     fun plainMp4IsAllowedButFlagged() {
         val result = AnimationProbe.probe(mp4(FileInfo(width = 64, height = 32, durationMs = 500)), "plain.mp4")
 
-        assertEquals(AnimationFormat.Vap, result.format)
+        assertEquals(PrismMotionFormat.Vap, result.format)
         assertEquals(64, result.width)
         assertEquals(32, result.height)
         assertEquals(500L, result.durationMs)
@@ -37,9 +37,9 @@ class AnimationProbeTest {
 
     @Test
     fun readsKapMetadataFromTheKtx2KeyValues() {
-        val result = AnimationProbe.probe(ktx2(width = 320, height = 240, layers = 10, fps = 30), "clip.ktx2")
+        val result = AnimationProbe.probe(ktxBytes(width = 320, height = 240, layers = 10, fps = 30), "clip.ktx")
 
-        assertEquals(AnimationFormat.Kap, result.format)
+        assertEquals(PrismMotionFormat.Kap, result.format)
         assertEquals(320, result.width)
         assertEquals(240, result.height)
         assertEquals(10, result.frameCount)
@@ -59,9 +59,9 @@ class AnimationProbeTest {
 
     @Test
     fun suffixThatDisagreesWithContentOnlyWarns() {
-        val result = AnimationProbe.probe(ktx2(8, 8, 2, 30), "misnamed.mp4")
+        val result = AnimationProbe.probe(ktxBytes(8, 8, 2, 30), "misnamed.mp4")
 
-        assertEquals(AnimationFormat.Kap, result.format)
+        assertEquals(PrismMotionFormat.Kap, result.format)
         assertTrue(result.ok)
         assertTrue(result.issues.any { it.code == "format-mismatch" })
     }
@@ -87,7 +87,7 @@ class AnimationProbeTest {
         return box("ftyp", "isom".encodeToByteArray()) + moov
     }
 
-    private fun ktx2(width: Int, height: Int, layers: Int, fps: Int): ByteArray {
+    private fun ktxBytes(width: Int, height: Int, layers: Int, fps: Int): ByteArray {
         val header = ByteArray(104)
         val magic = byteArrayOf(
             0xAB.toByte(), 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30,

@@ -1,6 +1,6 @@
 package com.zxhhyj.prism.motion.probe
 
-import com.zxhhyj.prism.motion.AnimationFormat
+import com.zxhhyj.prism.motion.PrismMotionFormat
 
 /** 单条检查结果。 */
 public enum class ProbeSeverity { Info, Warning, Error }
@@ -14,7 +14,7 @@ public data class ProbeIssue(
 /** 一个动画文件的探测结果；无法识别的格式也能拿到字节数与哈希。 */
 public data class ProbeResult(
     public val fileName: String,
-    public val format: AnimationFormat?,
+    public val format: PrismMotionFormat?,
     public val bytes: Long,
     public val sha256: String,
     public val width: Int? = null,
