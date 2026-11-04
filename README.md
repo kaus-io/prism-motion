@@ -34,7 +34,7 @@
 
 ## 演示与基准
 
-Demo 只负责交互，基准是独立应用。临时报告与原始性能数据保存在项目外；对外比较使用明确的 1× 基准，不展示具体测试配置。
+Demo 只负责交互，基准是独立应用。正式基准数据和图表按版本保存在 `benchmarks/<version>/`；临时日志等产物使用系统临时目录。对外比较使用明确的 1× 基准，不展示具体测试配置。
 
 ```bash
 ./gradlew :demo-desktop:generateDemoAssets -PdemoSizes=128,256 -PdemoFrames=24 -PdemoBitrates=150,1500
@@ -45,13 +45,13 @@ Demo 只负责交互，基准是独立应用。临时报告与原始性能数据
 ASSETS='<private asset set>' ./scripts/run-android-bench.sh <adb-serial> \
   --variant benchmark --counts '<private loads>' --isolate-scenarios --repeats 3 --allow-invalid
 python3 scripts/analyze-android-bench.py \
-  --input <private-raw.csv> --output-dir <public-directory-outside-project>
+  --input benchmarks/alpha01/data/raw.csv --json
 ```
 
 产品版本与独立 bench 协议版本由 [gradle.properties](<gradle.properties>) 管理，从 `alpha01` 开始。
 Android/CLI 产物使用同一产品版本；bench 界面、每条原始记录和 manifest 同时保留产品/协议版本。
 运行器校验安装包内烘焙的版本、APK 与素材指纹，拒绝把旧 APK 或不同协议的数据冒充当前版本。
-原始数据默认保存到项目外的版本化私有目录；公开输出只有中文倍率图，固定 KAP 为 1× 基准，不导出具体配置或临时 Markdown 报告。
+原始记录按实际版本保存到 `benchmarks/<version>/runs/<run_id>/`，避免覆盖已有基线；正式归档的数据与图表分别放在 `data/`、`charts/`。当前归档：[alpha01 数据](<benchmarks/alpha01/data/>) · [alpha01 六项倍率图](<benchmarks/alpha01/charts/>)。manifest 保留实际运行时参数与指纹，迁移不改写历史记录。公开图固定 KAP 为 1× 基准，不导出具体配置、临时 Markdown 报告或压缩包。
 `benchmark` 是非 debuggable 专用构建。进程隔离、逐帧回调校验和 CPU/PSS 分阶段测量用于避免回归误判；场景失败会保留，采集/崩溃/版本错误不会被 `--allow-invalid` 吞掉。
 公开图中的倍率是同场景相对开销，不是综合跑分或等画质效率；呈现回调也不等同物理屏幕扫描。
 

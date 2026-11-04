@@ -1,0 +1,10 @@
+{
+  "app_version": "alpha01",
+  "bench_version": "alpha01",
+  "trials": 24,
+  "verified_playback_trials": 15,
+  "invalid_trials": 3,
+  "raw_callbacks": 12301,
+  "raw_sha256": "5db4fd13b1872866920bde31d37df12f2657b91bd3c96eb08c13ed849c6e2308",
+  "checks": "runtime versions, exact counts, instance coverage, windows, FPS, p95/p99/max"
+}

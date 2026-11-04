@@ -6,10 +6,12 @@ from collections import defaultdict
 import csv
 import json
 import math
+import os
 from pathlib import Path
 import re
 import statistics
 import sys
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -275,17 +277,21 @@ def plot_metric(public, metric_key, destination):
 
 
 def analyze(input_path, output_dir=None, size=None, write_json=False):
-    """仅在项目外输出六项指标图，可选仅倍数 JSON。 / Writes all six metric charts outside the project, plus optional ratio-only JSON."""
+    """按实测版本归档公开图，未版本化默认留在系统临时目录。 / Archives public charts by measured version; unversioned defaults use system temporary storage."""
     input_path = Path(input_path).resolve()
     public = build_public(read_trials(input_path), size)
     if any(key not in public["metrics"] for key, _ in CHARTS):
         raise ValueError("输入缺少完整指标，无法生成全部六张图。")
+    root = ROOT.resolve()
+    version_output = root / "benchmarks" / public["version"] / "charts" if public["version"] != "未版本化" else None
     if output_dir is None:
-        folder = "unversioned" if public["version"] == "未版本化" else public["version"]
-        output_dir = Path.home() / "prism-motion-results" / folder
-    output_dir = Path(output_dir).resolve()
-    if output_dir == ROOT or ROOT in output_dir.parents:
-        raise ValueError("公开输出目录必须位于项目外。")
+        output_dir = version_output if version_output is not None else Path(tempfile.mkdtemp(prefix="prism-motion-unversioned-"))
+    requested_output = Path(os.path.abspath(output_dir))
+    output_dir = requested_output.resolve()
+    project_paths = (requested_output, output_dir)
+    if (any((path == root or root in path.parents) and path != version_output for path in project_paths)
+            or requested_output == version_output and output_dir != version_output):
+        raise ValueError("项目内公开输出仅允许 benchmarks/<实际应用版本>/charts；其它目录必须位于项目外。")
     if output_dir.exists() and any(item.name not in PUBLIC_FILES for item in output_dir.iterdir()):
         raise ValueError("输出目录含其它文件；请使用干净的公开目录，避免混入旧报告或私有数据。")
     if (output_dir / "ratios.json").exists() and not write_json:
@@ -305,7 +311,7 @@ def main(argv=None):
     """不打印输入配置或绝对测量的命令行。 / Provides a CLI that never prints private configuration or absolute measurements."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path, help="private trial CSV")
-    parser.add_argument("--output-dir", type=Path, help="clean public directory; default: ~/prism-motion-results/<version>, legacy: unversioned")
+    parser.add_argument("--output-dir", type=Path, help="clean public directory; default: benchmarks/<measured app_version>/charts; legacy: system temporary directory; other project paths are forbidden")
     parser.add_argument("--size", type=int, help="private logical-profile selector; never exported")
     parser.add_argument("--json", action="store_true", help="also write ratio-only JSON")
     args = parser.parse_args(argv)

@@ -72,6 +72,9 @@ class MultiplierTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="prism-relative-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        root_patch = mock.patch.object(ANALYSIS, "ROOT", self.root / "project")
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
         self.input = self.root / "private-trials.csv"
 
     def public(self, rows=None, size=None):
@@ -201,6 +204,141 @@ class MultiplierTests(unittest.TestCase):
                 ANALYSIS.plot_metric(public, "cpu_cost", self.root / "unused.png")
 
 
+class OutputPathTests(unittest.TestCase):
+    """版本归档路径必须匹配输入，旧数据只默认写系统临时目录。 / Version archives must match the input; legacy defaults use system temporary storage only."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="prism-output-path-test-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.project = self.root / "project"
+        self.project.mkdir()
+        self.system_temp = self.root / "system-temp"
+        self.system_temp.mkdir()
+        self.input = self.root / "private.csv"
+        write_input(self.input, fixture_rows())
+        root_patch = mock.patch.object(ANALYSIS, "ROOT", self.project)
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
+        plot_patch = mock.patch.object(ANALYSIS, "plot_metric")
+        self.plot = plot_patch.start()
+        self.addCleanup(plot_patch.stop)
+
+    def assert_chart_targets(self, folder):
+        """只检查输出边界，不在路径测试中渲染。 / Checks output boundaries without rendering in path tests."""
+        self.assertEqual([call.args[2] for call in self.plot.call_args_list],
+                         [folder / name for _, name in ANALYSIS.CHARTS])
+        self.assertTrue(folder.is_dir())
+
+    def test_default_archive_uses_actual_validated_app_version(self):
+        rows = fixture_rows()
+        for row in rows:
+            row.update(app_version="alpha02", version_code="2")
+        write_input(self.input, rows)
+        with mock.patch.object(ANALYSIS.tempfile, "mkdtemp") as temporary, mock.patch.object(Path, "home") as home:
+            public = ANALYSIS.analyze(self.input)
+        self.assertEqual(public["version"], "alpha02")
+        self.assert_chart_targets(self.project / "benchmarks" / "alpha02" / "charts")
+        self.assertFalse((self.project / "benchmarks" / "alpha01").exists())
+        temporary.assert_not_called()
+        home.assert_not_called()
+
+    def test_exact_versioned_project_charts_path_is_allowed_explicitly(self):
+        target = self.project / "benchmarks" / "alpha01" / "charts"
+        ANALYSIS.analyze(self.input, target, write_json=True)
+        self.assert_chart_targets(target)
+        self.assertEqual(json.loads((target / "ratios.json").read_text(encoding="utf-8"))["version"], "alpha01")
+
+    def test_root_other_and_mismatched_project_paths_are_rejected(self):
+        for target in (self.project, self.project / "other", self.project / "benchmarks",
+                       self.project / "benchmarks" / "alpha01", self.project / "benchmarks" / "alpha02" / "charts",
+                       self.project / "benchmarks" / "alpha01" / "data", self.project / "benchmarks" / "alpha01" / "charts" / "nested"):
+            with self.subTest(target=target), self.assertRaisesRegex(ValueError, "实际应用版本"):
+                ANALYSIS.analyze(self.input, target)
+        self.plot.assert_not_called()
+        self.assertEqual(list(self.project.iterdir()), [])
+
+    def test_legacy_default_uses_system_temp_not_home_or_alpha01(self):
+        write_input(self.input, fixture_rows(versioned=False))
+        with mock.patch.object(tempfile, "tempdir", str(self.system_temp)), \
+                mock.patch.object(ANALYSIS.tempfile, "mkdtemp", wraps=tempfile.mkdtemp) as temporary, \
+                mock.patch.object(Path, "home", return_value=self.root / "home") as home:
+            public = ANALYSIS.analyze(self.input)
+        temporary.assert_called_once_with(prefix="prism-motion-unversioned-")
+        home.assert_not_called()
+        self.assertEqual(public["version"], "未版本化")
+        target = self.plot.call_args_list[0].args[2].parent
+        self.assertEqual(target.parent, self.system_temp)
+        self.assertTrue(target.name.startswith("prism-motion-unversioned-"))
+        self.assert_chart_targets(target)
+        self.assertFalse((self.root / "home").exists())
+        self.assertEqual(list(self.project.iterdir()), [])
+
+    def test_legacy_cannot_be_archived_in_any_project_version(self):
+        write_input(self.input, fixture_rows(versioned=False))
+        for label in ("alpha01", "unversioned", "未版本化"):
+            with self.subTest(label=label), self.assertRaisesRegex(ValueError, "实际应用版本"):
+                ANALYSIS.analyze(self.input, self.project / "benchmarks" / label / "charts")
+        self.plot.assert_not_called()
+        self.assertEqual(list(self.project.iterdir()), [])
+
+    def test_explicit_external_output_remains_allowed_without_temp_allocation(self):
+        for versioned in (True, False):
+            write_input(self.input, fixture_rows(versioned=versioned))
+            target = self.root / ("external-versioned" if versioned else "external-legacy")
+            target.mkdir()
+            self.plot.reset_mock()
+            with mock.patch.object(ANALYSIS.tempfile, "mkdtemp") as temporary, mock.patch.object(Path, "home") as home:
+                ANALYSIS.analyze(self.input, target)
+            self.assert_chart_targets(target)
+            temporary.assert_not_called()
+            home.assert_not_called()
+
+    def test_versioned_archive_keeps_private_file_and_json_guards(self):
+        target = self.project / "benchmarks" / "alpha01" / "charts"
+        target.mkdir(parents=True)
+        private = target / "private.csv"
+        private.write_text("private", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "干净"):
+            ANALYSIS.analyze(self.input, target)
+        self.assertEqual(private.read_text(encoding="utf-8"), "private")
+        self.plot.assert_not_called()
+        clean = self.root / "external"
+        clean.mkdir()
+        ratios = clean / "ratios.json"
+        ratios.write_text("retained", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "--json"):
+            ANALYSIS.analyze(self.input, clean)
+        self.assertEqual(ratios.read_text(encoding="utf-8"), "retained")
+        self.plot.assert_not_called()
+
+    def test_other_project_aliases_cannot_bypass_the_exact_version_path(self):
+        target = self.project / "benchmarks" / "alpha01" / "charts"
+        target.mkdir(parents=True)
+        wrong_version = self.project / "benchmarks" / "alpha02" / "charts"
+        wrong_version.parent.mkdir()
+        wrong_version.symlink_to(target, target_is_directory=True)
+        external = self.root / "external"
+        external.mkdir()
+        other = self.project / "other"
+        other.symlink_to(external, target_is_directory=True)
+        for alias in (wrong_version, other):
+            with self.subTest(alias=alias), self.assertRaisesRegex(ValueError, "实际应用版本"):
+                ANALYSIS.analyze(self.input, alias)
+        self.plot.assert_not_called()
+
+    def test_versioned_symlink_cannot_redirect_to_another_project_path(self):
+        target = self.project / "benchmarks" / "alpha01" / "charts"
+        target.parent.mkdir(parents=True)
+        private = self.project / "private"
+        private.mkdir()
+        target.symlink_to(private, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "实际应用版本"):
+            ANALYSIS.analyze(self.input, target)
+        self.plot.assert_not_called()
+        self.assertEqual(list(private.iterdir()), [])
+
+
 class PublicChartTests(unittest.TestCase):
     """验证中文 PNG、白名单输出及公开隐私。 / Verifies Chinese PNGs, allowlisted outputs, and public privacy."""
 
@@ -214,6 +352,11 @@ class PublicChartTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="prism-public-chart-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.project = self.root / "project"
+        self.project.mkdir()
+        root_patch = mock.patch.object(ANALYSIS, "ROOT", self.project)
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
         self.input = self.root / "private.csv"
         self.output = self.root / "public"
         self.rows = fixture_rows()
@@ -329,17 +472,6 @@ class PublicChartTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "干净"):
             ANALYSIS.analyze(self.input, self.output)
         self.assertEqual(list(self.output.iterdir()), [self.output / "private-old.csv"])
-
-    def test_default_output_is_outside_project_and_legacy_folder_is_not_alpha01(self):
-        write_input(self.input, fixture_rows(versioned=False))
-        with mock.patch.object(ANALYSIS.Path, "home", return_value=self.root):
-            public = ANALYSIS.analyze(self.input)
-        target = self.root / "prism-motion-results" / "unversioned"
-        self.assertEqual(public["version"], "未版本化")
-        self.assertEqual(len(list(target.iterdir())), 6)
-        self.assertEqual({path.name for path in target.iterdir()}, set(CHART_EXPECTATIONS))
-        self.assertEqual({name for _, name in ANALYSIS.CHARTS}, set(CHART_EXPECTATIONS))
-        self.assertFalse((self.root / "prism-motion-results" / "alpha01").exists())
 
     def test_io_errors_do_not_print_private_paths(self):
         errors = io.StringIO()

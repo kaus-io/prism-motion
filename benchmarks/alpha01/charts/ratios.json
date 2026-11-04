@@ -1,0 +1,547 @@
+{
+  "version": "alpha01",
+  "loads": [
+    "轻负载",
+    "中负载",
+    "重负载"
+  ],
+  "baseline": "每档 KAP = 1×",
+  "method": "同一匹配场景：有效样本中位数之比；范围是极值比值包络，不是置信区间。各维度独立，不合成综合性能分。",
+  "caveat": "仅当前项目；不是改造前后对照，不代表等画质或等吞吐。部分失败仅据有效样本，缺失不记零。回调间隔不代表物理扫描。",
+  "metrics": {
+    "cpu_cost": {
+      "label": "处理器开销",
+      "direction": "lower_is_better",
+      "direction_label": "越低越好",
+      "series": [
+        {
+          "label": "KAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "label": "VAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.494540109197816,
+              "range": [
+                1.4341024841492567,
+                1.556352622349753
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 2.4747191011235956,
+              "range": [
+                2.4307563659905047,
+                2.6518595323201177
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": null,
+              "range": null,
+              "valid": 0,
+              "total": 3,
+              "failed": 3,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "missing"
+            }
+          ]
+        }
+      ]
+    },
+    "memory_cost": {
+      "label": "进程内存开销",
+      "direction": "lower_is_better",
+      "direction_label": "越低越好",
+      "series": [
+        {
+          "label": "KAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "label": "VAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.155844155844156,
+              "range": [
+                1.141025641025641,
+                1.155844155844156
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.4579439252336448,
+              "range": [
+                1.4579439252336448,
+                1.4579439252336448
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": null,
+              "range": null,
+              "valid": 0,
+              "total": 3,
+              "failed": 3,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "missing"
+            }
+          ]
+        }
+      ]
+    },
+    "first_output_cost": {
+      "label": "首次输出等待",
+      "direction": "lower_is_better",
+      "direction_label": "越低越好",
+      "series": [
+        {
+          "label": "KAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "label": "VAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.7454156341518359,
+              "range": [
+                1.5559252352292956,
+                2.459802889564946
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 2.9198183498142214,
+              "range": [
+                2.6600797116086827,
+                3.102906765975678
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": null,
+              "range": null,
+              "valid": 0,
+              "total": 3,
+              "failed": 3,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "missing"
+            }
+          ]
+        }
+      ]
+    },
+    "file_cost": {
+      "label": "文件体积",
+      "direction": "lower_is_better",
+      "direction_label": "越低越好",
+      "series": [
+        {
+          "label": "KAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "label": "VAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 0.06907145761333604,
+              "range": [
+                0.06907145761333604,
+                0.06907145761333604
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 0.06907145761333604,
+              "range": [
+                0.06907145761333604,
+                0.06907145761333604
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": null,
+              "range": null,
+              "valid": 0,
+              "total": 3,
+              "failed": 3,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "missing"
+            }
+          ]
+        }
+      ]
+    },
+    "callback_interval": {
+      "label": "成功回调间隔",
+      "direction": "lower_is_better",
+      "direction_label": "越低越好",
+      "series": [
+        {
+          "label": "KAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "label": "VAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.0043742477174646,
+              "range": [
+                0.9981025775753861,
+                1.0150506597549482
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.0733939689553267,
+              "range": [
+                1.0594367645378728,
+                1.092114767834956
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": null,
+              "range": null,
+              "valid": 0,
+              "total": 3,
+              "failed": 3,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "missing"
+            }
+          ]
+        }
+      ]
+    },
+    "frame_rate": {
+      "label": "提交帧率",
+      "direction": "higher_is_better",
+      "direction_label": "越高越好",
+      "series": [
+        {
+          "label": "KAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": 1.0,
+              "range": null,
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            }
+          ]
+        },
+        {
+          "label": "VAP·alpha01",
+          "points": [
+            {
+              "load": "轻负载",
+              "multiplier": 1.0075225677031094,
+              "range": [
+                0.9963329666299964,
+                1.0088377075522228
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "中负载",
+              "multiplier": 1.0015619807244933,
+              "range": [
+                1.0004319797966372,
+                1.00415793500316
+              ],
+              "valid": 3,
+              "total": 3,
+              "failed": 0,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "complete"
+            },
+            {
+              "load": "重负载",
+              "multiplier": null,
+              "range": null,
+              "valid": 0,
+              "total": 3,
+              "failed": 3,
+              "reference_valid": 3,
+              "reference_total": 3,
+              "status": "missing"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

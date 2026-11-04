@@ -53,6 +53,12 @@ class VersionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.apk = Path(self.temp.name) / "fixture.apk"
+        self.project = Path(self.temp.name) / "project"
+        self.project.mkdir()
+        (self.project / "gradle.properties").write_text("version=alpha01\nbenchVersion=alpha01\n", encoding="utf-8")
+        root_patch = mock.patch.object(RUNNER, "ROOT", self.project)
+        root_patch.start()
+        self.addCleanup(root_patch.stop)
 
     def test_alpha01_apk_metadata_and_material_hash(self):
         write_apk(self.apk)
@@ -646,6 +652,10 @@ class BoundaryTests(unittest.TestCase):
         """模拟入口的所有外部调用。 / Mocks every external call at the entry point."""
         stack = contextlib.ExitStack()
         self.addCleanup(stack.close)
+        root = Path(temp) / "project"
+        root.mkdir(exist_ok=True)
+        (root / "gradle.properties").write_text("version=alpha01\nbenchVersion=alpha01\n", encoding="utf-8")
+        stack.enter_context(mock.patch.object(RUNNER, "ROOT", root))
         stack.enter_context(mock.patch.dict(os.environ, {"OUT": str(Path(temp) / "bench.csv"), "ASSETS": "exact-stem"}))
         build_args = ["--skip-build"] if skip_build else []
         stack.enter_context(mock.patch("sys.argv", ["run-android-bench.py", "serial", *build_args, *extra]))
@@ -693,20 +703,90 @@ class BoundaryTests(unittest.TestCase):
                 run.assert_not_called()
                 self.assertEqual(command.call_count, 1)
 
-    def test_main_default_outputs_and_manifest_are_private_outside_project(self):
-        for versions, label in ((ALPHA_VERSIONS, "alpha01"), (None, "legacy-unversioned")):
-            with self.subTest(label=label), tempfile.TemporaryDirectory() as temp:
+    def test_main_versioned_default_uses_baked_app_version_and_adjacent_manifest(self):
+        for versions in (ALPHA_VERSIONS, ALPHA_VERSIONS | {"app_version": "alpha02", "version_code": 2}):
+            with self.subTest(versions=versions), tempfile.TemporaryDirectory() as temp:
                 unused, run = self.main_mocks(temp)
-                with mock.patch.dict(os.environ), mock.patch.object(Path, "home", return_value=Path(temp)), \
+                with mock.patch.dict(os.environ), mock.patch.object(Path, "home") as home, \
+                        mock.patch.object(RUNNER.tempfile, "mkdtemp") as temporary, \
                         mock.patch.object(RUNNER, "apk_versions", return_value=versions), \
                         mock.patch.object(RUNNER, "write_manifest") as manifest:
                     os.environ.pop("OUT", None)
                     RUNNER.main()
                 output = run.call_args.args[4]
-                self.assertEqual(output.parent.parent, Path(temp) / "prism-motion-results" / label / "private")
-                self.assertEqual(output.name, "raw.csv")
+                plan = run.call_args.args[1]
+                self.assertEqual(output, Path(temp) / "project" / "benchmarks" / versions["app_version"] / "runs" / plan[0]["run_id"] / "raw.csv")
+                self.assertTrue(output.parent.is_dir())
+                self.assertEqual(run.call_args.args[5], output.with_name("raw-samples.csv"))
                 self.assertEqual(manifest.call_args.args[0], output.with_suffix(".manifest.json"))
                 self.assertEqual(manifest.call_args.args[5], versions)
+                temporary.assert_not_called()
+                home.assert_not_called()
+
+    def test_main_new_versioned_run_does_not_overwrite_retained_baseline_or_run(self):
+        with tempfile.TemporaryDirectory() as temp:
+            unused, run = self.main_mocks(temp)
+            archive = Path(temp) / "project" / "benchmarks" / "alpha01"
+            baseline = archive / "data" / "raw.csv"
+            baseline.parent.mkdir(parents=True)
+            baseline.write_text("retained baseline\n", encoding="utf-8")
+            with mock.patch.dict(os.environ), mock.patch.object(RUNNER.uuid, "uuid4", side_effect=[
+                    mock.Mock(hex="first-run"), mock.Mock(hex="second-run")]):
+                os.environ.pop("OUT", None)
+                RUNNER.main()
+                first_output = run.call_args.args[4]
+                first_output.write_text("retained first run\n", encoding="utf-8")
+                RUNNER.main()
+                second_output = run.call_args.args[4]
+            self.assertEqual(first_output, archive / "runs" / "first-run" / "raw.csv")
+            self.assertEqual(second_output, archive / "runs" / "second-run" / "raw.csv")
+            self.assertNotEqual(first_output, second_output)
+            self.assertEqual(first_output.read_text(encoding="utf-8"), "retained first run\n")
+            self.assertEqual(baseline.read_text(encoding="utf-8"), "retained baseline\n")
+
+    def test_main_legacy_default_uses_unique_system_temp_not_home_or_version_archive(self):
+        with tempfile.TemporaryDirectory() as temp:
+            unused, run = self.main_mocks(temp)
+            system_temp = Path(temp) / "system-temp"
+            system_temp.mkdir()
+            home_path = Path(temp) / "home"
+            with mock.patch.dict(os.environ), mock.patch.object(tempfile, "tempdir", str(system_temp)), \
+                    mock.patch.object(RUNNER.tempfile, "mkdtemp", wraps=tempfile.mkdtemp) as temporary, \
+                    mock.patch.object(Path, "home", return_value=home_path) as home, \
+                    mock.patch.object(RUNNER, "apk_versions", return_value=None), \
+                    mock.patch.object(RUNNER, "write_manifest") as manifest:
+                os.environ.pop("OUT", None)
+                RUNNER.main()
+                first_output = run.call_args.args[4]
+                RUNNER.main()
+                output = run.call_args.args[4]
+            self.assertNotEqual(first_output, output)
+            self.assertEqual(temporary.call_args_list, [mock.call(prefix="prism-motion-unversioned-")] * 2)
+            for path in (first_output, output):
+                self.assertEqual(path.name, "raw.csv")
+                self.assertEqual(path.parent.parent, system_temp)
+                self.assertTrue(path.parent.name.startswith("prism-motion-unversioned-"))
+                self.assertTrue(path.parent.is_dir())
+            self.assertEqual(manifest.call_args.args[0], output.with_suffix(".manifest.json"))
+            self.assertIsNone(manifest.call_args.args[5])
+            home.assert_not_called()
+            self.assertFalse(home_path.exists())
+            self.assertFalse((Path(temp) / "project" / "benchmarks").exists())
+
+    def test_explicit_out_and_manifest_remain_honored_without_temp_allocation(self):
+        for versions in (ALPHA_VERSIONS, None):
+            with self.subTest(versions=versions), tempfile.TemporaryDirectory() as temp:
+                manifest_path = Path(temp) / "custom-manifest.json"
+                unused, run = self.main_mocks(temp, extra=["--manifest", str(manifest_path)])
+                with mock.patch.object(RUNNER, "apk_versions", return_value=versions), \
+                        mock.patch.object(RUNNER.tempfile, "mkdtemp") as temporary, \
+                        mock.patch.object(Path, "home") as home, mock.patch.object(RUNNER, "write_manifest") as manifest:
+                    RUNNER.main()
+                self.assertEqual(run.call_args.args[4], Path(temp) / "bench.csv")
+                self.assertEqual(manifest.call_args.args[0], manifest_path)
+                temporary.assert_not_called()
+                home.assert_not_called()
+                self.assertFalse((Path(temp) / "project" / "benchmarks").exists())
 
     def test_main_manifest_cannot_overwrite_results_or_apk(self):
         for name in ("bench.csv", "bench-samples.csv", "bench-presents.csv"):

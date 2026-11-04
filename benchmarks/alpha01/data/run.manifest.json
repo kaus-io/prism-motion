@@ -1,0 +1,255 @@
+{
+  "seed": 20261104,
+  "args": {
+    "serial": "192.168.101.122:7575",
+    "skip_build": true,
+    "variant": "benchmark",
+    "counts": [
+      0,
+      1,
+      8,
+      16
+    ],
+    "measure_ms": 4000,
+    "warmup_ms": 1000,
+    "timeout": 35,
+    "repeats": 3,
+    "seed": 20261104,
+    "isolate_scenarios": true,
+    "allow_invalid": true,
+    "manifest": "/home/zxhhyj/prism-motion-results/alpha01/private/run.manifest.json",
+    "expect_app_version": null,
+    "expect_bench_version": null
+  },
+  "apk": "/home/zxhhyj/AndroidStudioProjects/kaus-workspace/projects/prism-motion/bench-android/build/outputs/apk/benchmark/bench-android-benchmark.apk",
+  "apk_sha256": "4c8d0a2e7ad2c123ee78279f0fddab070bd2aa0ca0505fe78e851075f9956750",
+  "assets": [
+    "alpha-256-astc8x8",
+    "alpha-256-b1500"
+  ],
+  "asset_sha256": {
+    "alpha-256-astc8x8": "f2ddc74ce35a12c8dab9b5469cda3bf34a506d6fd128d92907001bbfed0c8aa5",
+    "alpha-256-b1500": "60176c67f6c9402e2b1d78ccce7e7fd8970e590687979a3b59849c9b6815c148"
+  },
+  "trials": [
+    {
+      "repeat": 1,
+      "trial": 1,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        1
+      ],
+      "run_id": "c06cdf76c4df4fe1bc7843e34a84279f"
+    },
+    {
+      "repeat": 1,
+      "trial": 2,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        1
+      ],
+      "run_id": "64e8b801add3431d9b25025acdf19b7f"
+    },
+    {
+      "repeat": 1,
+      "trial": 3,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        0
+      ],
+      "run_id": "0d7c5e4faf3b499f8aae697463e3adba"
+    },
+    {
+      "repeat": 1,
+      "trial": 4,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        0
+      ],
+      "run_id": "abbe4659f19443389940e79fa2f879f1"
+    },
+    {
+      "repeat": 1,
+      "trial": 5,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        16
+      ],
+      "run_id": "317212b9144247cf95e7a854eb16b3e0"
+    },
+    {
+      "repeat": 1,
+      "trial": 6,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        8
+      ],
+      "run_id": "82705a508811448bb9bc8766c732ade9"
+    },
+    {
+      "repeat": 1,
+      "trial": 7,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        8
+      ],
+      "run_id": "2e0f878e23854888ab86d1deda7db1c1"
+    },
+    {
+      "repeat": 1,
+      "trial": 8,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        16
+      ],
+      "run_id": "7d0f6d0ebcd64c99b968788f50284494"
+    },
+    {
+      "repeat": 2,
+      "trial": 9,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        16
+      ],
+      "run_id": "276cb25634df48ebb9f84fd3e18d2c98"
+    },
+    {
+      "repeat": 2,
+      "trial": 10,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        8
+      ],
+      "run_id": "24664f3b2e594ae08cb4cca69f19d201"
+    },
+    {
+      "repeat": 2,
+      "trial": 11,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        1
+      ],
+      "run_id": "5ae9eaab447646658d9e7981421fe2a5"
+    },
+    {
+      "repeat": 2,
+      "trial": 12,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        16
+      ],
+      "run_id": "e7fa3b87fc784630928d132df1e26cbc"
+    },
+    {
+      "repeat": 2,
+      "trial": 13,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        8
+      ],
+      "run_id": "6af081558ba94c73a986c24454ad9a4f"
+    },
+    {
+      "repeat": 2,
+      "trial": 14,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        0
+      ],
+      "run_id": "5cbc616259c54e6dbb18374daf8780e8"
+    },
+    {
+      "repeat": 2,
+      "trial": 15,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        1
+      ],
+      "run_id": "2783f8d3201e435382416c367a585c02"
+    },
+    {
+      "repeat": 2,
+      "trial": 16,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        0
+      ],
+      "run_id": "d6c4a318e41046ff9c14342062212443"
+    },
+    {
+      "repeat": 3,
+      "trial": 17,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        0
+      ],
+      "run_id": "6b042bacfcf44d6181c7ad177223da1b"
+    },
+    {
+      "repeat": 3,
+      "trial": 18,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        16
+      ],
+      "run_id": "25ac0098b0714cec8e427eb3be6e5760"
+    },
+    {
+      "repeat": 3,
+      "trial": 19,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        8
+      ],
+      "run_id": "aa6e23cf546e474fbd7a475d1125ec19"
+    },
+    {
+      "repeat": 3,
+      "trial": 20,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        8
+      ],
+      "run_id": "3f0cd68395dc40d3a6810ef756e25dd3"
+    },
+    {
+      "repeat": 3,
+      "trial": 21,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        1
+      ],
+      "run_id": "b06b9c4f27414c3195cc9cf96ed8cb55"
+    },
+    {
+      "repeat": 3,
+      "trial": 22,
+      "asset": "alpha-256-b1500",
+      "counts": [
+        1
+      ],
+      "run_id": "655ff3a5dcd34011a8523a0a6a37f994"
+    },
+    {
+      "repeat": 3,
+      "trial": 23,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        16
+      ],
+      "run_id": "4c313aa7e7f7496881db4f9400454ef6"
+    },
+    {
+      "repeat": 3,
+      "trial": 24,
+      "asset": "alpha-256-astc8x8",
+      "counts": [
+        0
+      ],
+      "run_id": "57b35386177649dd9135a029f75b0501"
+    }
+  ],
+  "app_version": "alpha01",
+  "bench_version": "alpha01",
+  "version_code": 1
+}

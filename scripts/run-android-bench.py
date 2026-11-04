@@ -12,6 +12,7 @@ import re
 import selectors
 import shlex
 import subprocess
+import tempfile
 import time
 import uuid
 import zipfile
@@ -58,7 +59,9 @@ def nonnegative_int(value):
 
 def argument_parser():
     """集中定义运行参数与安全默认值。 / Defines runner options and safe defaults."""
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, epilog=(
+        "OUT overrides the CSV path; default: benchmarks/<APK app_version>/runs/<first_run_id>/raw.csv; "
+        "unversioned debug: system temporary directory. The manifest defaults to beside the CSV."))
     parser.add_argument("serial", help="explicit connected ADB device serial")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--variant", choices=("debug", "benchmark"), default="debug",
@@ -417,10 +420,13 @@ def main():
     plan = trial_plan(selected, args.counts, args.repeats, args.seed, args.isolate_scenarios)
     for trial in plan:
         trial["run_id"] = uuid.uuid4().hex
-    # 原始配置与轨迹默认留在仓库外的私有目录。 / Keeps raw configurations and traces in a private directory outside the repository by default.
-    version_label = versions["app_version"] if versions is not None else "legacy-unversioned"
-    default_output = Path.home() / "prism-motion-results" / version_label / "private" / plan[0]["run_id"] / "raw.csv"
-    output = Path(os.environ.get("OUT", default_output))
+    # 按 APK 实际版本保留独立运行，旧包只写系统临时目录。 / Retains separate runs by baked APK version; legacy APKs use only system temporary storage.
+    if "OUT" in os.environ:
+        output = Path(os.environ["OUT"])
+    elif versions is not None:
+        output = ROOT / "benchmarks" / versions["app_version"] / "runs" / plan[0]["run_id"] / "raw.csv"
+    else:
+        output = Path(tempfile.mkdtemp(prefix="prism-motion-unversioned-")) / "raw.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
     trace_output = output.with_name(output.stem + "-samples.csv")
     manifest = Path(args.manifest) if args.manifest else output.with_suffix(".manifest.json")
