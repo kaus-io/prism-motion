@@ -33,7 +33,7 @@ internal object Tools {
 
     fun describe(): Map<String, String> {
         val out = LinkedHashMap<String, String>()
-        for (name in listOf("ffmpeg", "astcenc")) out[name] = find(name) ?: "missing"
+        for (name in listOf("astcenc")) out[name] = find(name) ?: "missing"
         return out
     }
 

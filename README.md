@@ -45,18 +45,18 @@ CLI 只有一个实现：Kotlin/Native 编译的原生可执行文件，不依�
 
 ```bash
 ./gradlew nativeCli
-# Linux:   native/build/bin/linuxX64/releaseExecutable/prism-motion.kexe   （约 82 MB）
-# Windows: native/build/bin/mingwX64/releaseExecutable/prism-motion.exe    （约 103 MB）
+# Linux:   native/build/bin/linuxX64/releaseExecutable/prism-motion.kexe   （约 6 MB）
+# Windows: native/build/bin/mingwX64/releaseExecutable/prism-motion.exe    （约 2.4 MB）
 ```
 
 | 平台 | 构建方式 | 状态 |
 | --- | --- | --- |
 | Linux x86_64 | 任意主机交叉编译 | 已验证 |
-| Windows x86_64 | 在 Linux 上交叉编译 | 可编译、产物为 PE32+；未在真机运行验证 |
+| Windows x86_64 | 在 Linux 上交叉编译 | 只支持 `probe` / `check` / `engines` / `pack kap --format astc-*`；PNG 解码与 H.264 编码未接入 |
 | macOS arm64 / x86_64 | 只能在 macOS 主机上构建 | 代码已就绪，未在本机构建 |
 
 `tools/` 按平台分目录（`tools/linux-x86_64/`、`tools/windows-x86_64/`、`tools/macos-arm64/` …），
-构建时把对应平台的 ffmpeg / astcenc 追加到该平台的可执行文件末尾；缺哪个平台就跳过哪个。
+构建时把对应平台的 `astcenc` 追加到该平台的可执行文件末尾；缺哪个平台就跳过哪个。
 
 ```bash
 prism-motion.kexe engines                                  # 引擎与平台支持
@@ -69,9 +69,8 @@ prism-motion.kexe pack vap --frames frames/ --out out.mp4 --fps 30
 - 所有命令支持 `--json`，输出 `{"ok":…,"command":…}`，便于 agent 解析。
 - 退出码：`0` 成功、`1` 校验失败、`2` 用法错误、`3` 运行失败。
 - `check` 把不认识的扩展名也算失败；读不了的目录直接跳过。
-- `pack vap` 用 `ffmpeg`，`pack kap --format astc-*` 用 `astcenc`；`--format rgba8` 不需要任何外部工具。
-  查找顺序：`--ffmpeg/--astcenc` > `PRISM_MOTION_FFMPEG` / `PRISM_MOTION_ASTCENC` > 可执行文件同级 `tools/`
-  > `~/.cache/prism-motion/tools/` > **二进制内嵌**（首次使用自动解压）> `PATH`。
+- `pack vap` / `pack kap --format rgba8` 用内置栈：stb_image 解 PNG → OpenH264 编码 → 自写 MP4 封装，
+  **不需要任何外部工具**；只有 `pack kap --format astc-*` 需要 `astcenc`（内嵌，也可用 `--astcenc` 覆盖）。
 - `probe` 读取：VAP 的 `vapc` box（尺寸 / 帧数 / fps / hasAlpha）与 `mvhd` 时长；
   KAP 的 KTX2 头（尺寸 / layerCount）与 key/value（`anim.fps` 等）。
 
@@ -82,9 +81,29 @@ Kotlin/Native 的 `KotlinNativeBundleBuildService` 无法和 AGP 模块共存于
 平台无关源码。链接完成后，`embedTools` 任务把 `tools/ffmpeg`、`tools/astcenc` 追加到可执行文件末尾
 （`PMTOOLS1` payload），运行时首次使用解压到 `~/.cache/prism-motion/tools/`。
 
+## 内置编解码栈
+
+| 职责 | 组件 | 许可 |
+| --- | --- | --- |
+| PNG 解码 | [stb_image](https://github.com/nothings/stb) | 公有领域 |
+| H.264 编码 | [OpenH264](https://github.com/cisco/openh264) 2.6.0 | BSD-2-Clause |
+| MP4 封装 | 本仓库 `Mp4Writer`（纯 Kotlin） | 同本仓库 |
+| ASTC 压缩 | [astcenc](https://github.com/ARM-software/astc-encoder) 4.8.0 | Apache-2.0 |
+
+首次构建前先跑：
+
+```bash
+./thirdparty/build-thirdparty.sh linux-x86_64   # 需要 cc 与 nasm
+```
+
+脚本会下载并编译 `libstb.a`、`libopenh264.a`、`libprismcodec.a`（OpenH264 的 C 封装），
+放到 `thirdparty/lib/<platform>/`（不入库）。
+
 ## 已知限制
 
 - KAP / VAP 引擎仍是 Android-only（MediaCodec / Vulkan）；CLI 侧只做探测、校验与打包。
-- Windows 产物只做了交叉编译验证，没有真机 / wine 运行；macOS 目标只能在 macOS 主机上构建。
-- 打包逻辑在原生侧是独立实现（`VapPack` / `Ktx2`），与原 `vap-encode` / `kap-encode` 靠
-  `vapc.json` 对拍，暂无跨实现一致性测试。
+- Windows 产物只做了交叉编译验证，没有真机 / wine 运行；且缺少 stb_image / OpenH264 的 mingw 交叉编译，
+  因此 PNG 解码与 H.264 编码在 Windows 上会明确报错（其它命令正常）。
+- macOS 目标只能在 macOS 主机上构建。
+- H.264 输出固定为 Constrained Baseline（OpenH264 的能力上限），压缩效率低于 x264/x265，
+  对 UI 动效够用；实测同码率下体积约大 15%、PSNR 低 2–3 dB。

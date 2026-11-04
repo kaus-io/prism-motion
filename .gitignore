@@ -7,3 +7,8 @@ local.properties
 
 # 构建时嵌入 jar 的原生工具（体积大，不入库）
 /tools/
+
+# 第三方库源码与编译产物（用 thirdparty/build-thirdparty.sh 生成）
+/native/thirdparty/src/
+/native/thirdparty/lib/
+/native/thirdparty/include/

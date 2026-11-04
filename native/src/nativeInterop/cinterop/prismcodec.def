@@ -1,0 +1,3 @@
+package = prismcodec
+headers = prism_codec.h
+headerFilter = prism_codec.h

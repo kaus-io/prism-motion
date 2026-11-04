@@ -38,67 +38,57 @@ internal object PackCmd {
     ): Int {
         val files = pngFiles(framesDir)
         if (files.isEmpty()) return fail("$framesDir 里没有 PNG", asJson, EXIT_USAGE)
-        val (width, height) = Png.size(Platform.readFile(files.first()))
-            ?: return fail("第一帧不是有效 PNG", asJson, EXIT_RUNTIME)
+        val first = ImageDecoder.decodePng(Platform.readFile(files.first()))
+        val width = first.width
+        val height = first.height
 
-        val ffmpeg = options["ffmpeg"] ?: Tools.resolve("ffmpeg")
-        val tmp = Platform.makeTempDir("prism-motion-vap")
-        try {
-            val rawPath = "$tmp/frames.rgba"
-            val decodeCode = Platform.runProcess(
-                listOf(
-                    ffmpeg, "-y", "-nostdin", "-pattern_type", "glob", "-i", "$framesDir/*.png",
-                    "-frames:v", files.size.toString(), "-pix_fmt", "rgba", "-f", "rawvideo", rawPath,
-                ),
-            )
-            if (decodeCode != 0) return fail("ffmpeg 解码失败（退出码 $decodeCode）", asJson, EXIT_RUNTIME)
-            val raw = Platform.readFile(rawPath)
-            val frameBytes = width * height * 4
-            if (raw.size != frameBytes * files.size) {
-                return fail("解码帧数不符：期望 ${files.size} 帧，实际 ${raw.size / frameBytes} 帧", asJson, EXIT_RUNTIME)
+        val sources = ArrayList<Frame>(files.size)
+        sources += first
+        for (index in 1 until files.size) {
+            val frame = ImageDecoder.decodePng(Platform.readFile(files[index]))
+            if (frame.width != width || frame.height != height) {
+                return fail("帧尺寸不一致：${files[index]} 是 ${frame.width}x${frame.height}", asJson, EXIT_RUNTIME)
             }
-
-            val alphaMode = (options["alpha"] ?: "auto").lowercase()
-            val hasAlpha = when (alphaMode) {
-                "on" -> true
-                "off" -> false
-                "auto" -> scanAlpha(raw, frameBytes)
-                else -> return fail("--alpha 只接受 auto / on / off", asJson, EXIT_USAGE)
-            }
-            val scale = options["scale"]?.toFloatOrNull() ?: 0.5f
-            val layout = VapPack.computeLayout(width, height, scale, hasAlpha)
-
-            val canvasBytes = layout.videoW * layout.videoH * 3
-            val packed = ByteArray(canvasBytes * files.size)
-            val frame = ByteArray(canvasBytes)
-            for (index in files.indices) {
-                VapPack.packFrame(raw, width, height, layout, frame)
-                frame.copyInto(packed, index * canvasBytes)
-            }
-            val packedPath = "$tmp/packed.rgb"
-            Platform.writeFile(packedPath, packed)
-
-            val encodeCode = Platform.runProcess(
-                listOf(
-                    ffmpeg, "-y", "-nostdin", "-f", "rawvideo", "-pix_fmt", "rgb24",
-                    "-s", "${layout.videoW}x${layout.videoH}", "-framerate", fps.toString(),
-                    "-i", packedPath, "-vcodec", "libx265", "-b:v", "3000k",
-                    "-profile:v", "main", "-level", "4.0", "-tag:v", "hvc1",
-                    "-pix_fmt", "yuv420p", "$tmp/video.mp4",
-                ),
-            )
-            if (encodeCode != 0) return fail("ffmpeg 编码失败（退出码 $encodeCode）", asJson, EXIT_RUNTIME)
-
-            val vapc = VapPack.vapcJson(files.size, width, height, layout, fps).encodeToByteArray()
-            val mp4 = VapPack.insertBox(Platform.readFile("$tmp/video.mp4"), VapPack.boxBytes("vapc", vapc))
-            Platform.writeFile(out, mp4)
-            val sidecar = "${out.substringBeforeLast('.')}.vapc.json"
-            Platform.writeFile(sidecar, vapc)
-
-            return report("vap", out, sidecar, files.size, fps, asJson)
-        } finally {
-            Platform.removeRecursively(tmp)
+            sources += frame
         }
+
+        val alphaMode = (options["alpha"] ?: "auto").lowercase()
+        val hasAlpha = when (alphaMode) {
+            "on" -> true
+            "off" -> false
+            "auto" -> sources.any(::hasTransparentPixel)
+            else -> return fail("--alpha 只接受 auto / on / off", asJson, EXIT_USAGE)
+        }
+        val scale = options["scale"]?.toFloatOrNull() ?: 0.5f
+        val layout = VapPack.computeLayout(width, height, scale, hasAlpha)
+
+        val canvasBytes = layout.videoW * layout.videoH * 4
+        val frames = ArrayList<Frame>(sources.size)
+        val canvas = ByteArray(canvasBytes)
+        for (source in sources) {
+            VapPack.packFrame(source.rgba, width, height, layout, canvas)
+            frames += Frame(layout.videoW, layout.videoH, canvas.copyOf())
+        }
+
+        val bitrate = options["bitrate"]?.toIntOrNull() ?: 3000
+        val stream = H264Encoder.encode(layout.videoW, layout.videoH, fps, bitrate, frames)
+        val mp4 = Mp4Writer.write(layout.videoW, layout.videoH, fps, stream)
+
+        val vapc = VapPack.vapcJson(frames.size, width, height, layout, fps).encodeToByteArray()
+        Platform.writeFile(out, VapPack.insertBox(mp4, VapPack.boxBytes("vapc", vapc)))
+        val sidecar = "${out.substringBeforeLast('.')}.vapc.json"
+        Platform.writeFile(sidecar, vapc)
+
+        return report("vap", out, sidecar, frames.size, fps, asJson)
+    }
+
+    private fun hasTransparentPixel(frame: Frame): Boolean {
+        var offset = 3
+        while (offset < frame.rgba.size) {
+            if ((frame.rgba[offset].toInt() and 0xFF) != 255) return true
+            offset += 4
+        }
+        return false
     }
 
     private fun packKap(
@@ -125,22 +115,12 @@ internal object PackCmd {
         try {
             val layers = ArrayList<ByteArray>()
             if (format == KtxFormat.RGBA8) {
-                val ffmpeg = options["ffmpeg"] ?: Tools.resolve("ffmpeg")
-                val rawPath = "$tmp/frames.rgba"
-                val code = Platform.runProcess(
-                    listOf(
-                        ffmpeg, "-y", "-nostdin", "-pattern_type", "glob", "-i", "$framesDir/*.png",
-                        "-frames:v", files.size.toString(), "-pix_fmt", "rgba", "-f", "rawvideo", rawPath,
-                    ),
-                )
-                if (code != 0) return fail("ffmpeg 解码失败（退出码 $code）", asJson, EXIT_RUNTIME)
-                val raw = Platform.readFile(rawPath)
-                val frameBytes = width * height * 4
-                if (raw.size != frameBytes * files.size) {
-                    return fail("解码帧数不符：期望 ${files.size} 帧", asJson, EXIT_RUNTIME)
-                }
-                for (index in files.indices) {
-                    val layer = raw.copyOfRange(index * frameBytes, (index + 1) * frameBytes)
+                for (file in files) {
+                    val frame = ImageDecoder.decodePng(Platform.readFile(file))
+                    if (frame.width != width || frame.height != height) {
+                        return fail("帧尺寸不一致：$file 是 ${frame.width}x${frame.height}", asJson, EXIT_RUNTIME)
+                    }
+                    val layer = frame.rgba.copyOf()
                     if (premultiply) premultiplyAlpha(layer)
                     layers += layer
                 }

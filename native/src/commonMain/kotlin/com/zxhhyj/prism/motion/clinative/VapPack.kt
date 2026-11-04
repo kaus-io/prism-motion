@@ -50,17 +50,24 @@ internal object VapPack {
         return Layout(width, height, alphaX, alphaY, alphaW, alphaH, rawW + fillW, rawH + fillH, true)
     }
 
-    /** 把一帧 RGBA 打包成不透明 RGB24 画布（RGB 合成到黑底，alpha 转灰度放蒙版区）。 */
+    /** 把一帧 RGBA 打包成不透明 RGBA 画布（RGB 合成到黑底，alpha 转灰度放蒙版区）。 */
     fun packFrame(source: ByteArray, width: Int, height: Int, layout: Layout, out: ByteArray) {
         out.fill(0)
+        val stride = layout.videoW * 4
+        var offset = 0
+        while (offset < out.size) {
+            out[offset + 3] = 255.toByte()
+            offset += 4
+        }
         for (y in 0 until height) {
             for (x in 0 until width) {
                 val src = (y * width + x) * 4
                 val alpha = (source[src + 3].toInt() and 0xFF)
-                val dst = (y * layout.videoW + x) * 3
+                val dst = y * stride + x * 4
                 out[dst] = (((source[src].toInt() and 0xFF) * alpha) / 255).toByte()
                 out[dst + 1] = (((source[src + 1].toInt() and 0xFF) * alpha) / 255).toByte()
                 out[dst + 2] = (((source[src + 2].toInt() and 0xFF) * alpha) / 255).toByte()
+                out[dst + 3] = 255.toByte()
             }
         }
         if (!layout.hasAlpha) return
@@ -69,10 +76,11 @@ internal object VapPack {
             for (ax in 0 until layout.alphaW) {
                 val sx = ax * width / layout.alphaW
                 val value = (source[(sy * width + sx) * 4 + 3].toInt() and 0xFF)
-                val dst = ((layout.alphaY + ay) * layout.videoW + layout.alphaX + ax) * 3
+                val dst = (layout.alphaY + ay) * stride + (layout.alphaX + ax) * 4
                 out[dst] = value.toByte()
                 out[dst + 1] = value.toByte()
                 out[dst + 2] = value.toByte()
+                out[dst + 3] = 255.toByte()
             }
         }
     }

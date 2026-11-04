@@ -9,7 +9,28 @@ val hostOs = System.getProperty("os.name").lowercase()
 val onMac = hostOs.contains("mac")
 
 kotlin {
-    linuxX64 { binaries { executable { entryPoint = "com.zxhhyj.prism.motion.clinative.main"; baseName = "prism-motion" } } }
+    linuxX64 {
+        compilations.getByName("main").cinterops {
+            val stb by creating {
+                defFile(project.file("src/nativeInterop/cinterop/stb.def"))
+                includeDirs(project.file("thirdparty/include"))
+            }
+            val prismcodec by creating {
+                defFile(project.file("src/nativeInterop/cinterop/prismcodec.def"))
+                includeDirs(project.file("thirdparty/shim"))
+            }
+        }
+        binaries {
+            executable {
+                entryPoint = "com.zxhhyj.prism.motion.clinative.main"
+                baseName = "prism-motion"
+                linkerOpts(
+                    "-L${projectDir}/thirdparty/lib/linux-x86_64",
+                    "-lprismcodec", "-lopenh264", "-lstb", "-lstdc++",
+                )
+            }
+        }
+    }
     mingwX64 { binaries { executable { entryPoint = "com.zxhhyj.prism.motion.clinative.main"; baseName = "prism-motion" } } }
     if (onMac) {
         macosX64 { binaries { executable { entryPoint = "com.zxhhyj.prism.motion.clinative.main"; baseName = "prism-motion" } } }
@@ -25,6 +46,10 @@ kotlin {
             dependsOn(commonMain)
             kotlin.srcDir("src/posixMain/kotlin")
         }
+        val cinteropMain by creating {
+            dependsOn(commonMain)
+            kotlin.srcDir("src/cinteropMain/kotlin")
+        }
         val mingwMain by creating {
             dependsOn(commonMain)
             kotlin.srcDir("src/mingwMain/kotlin")
@@ -32,9 +57,11 @@ kotlin {
         }
         val linuxX64Main by getting {
             dependsOn(posixMain)
+            dependsOn(cinteropMain)
             kotlin.srcDir("../prism-motion-probe/src/posixMain/kotlin")
         }
         val mingwX64Main by getting { dependsOn(mingwMain) }
+
         if (onMac) {
             val macosMain by creating {
                 dependsOn(posixMain)
@@ -77,7 +104,7 @@ fun registerEmbed(taskName: String, linkTask: String, exeRelative: String, toolP
             }
             val toolDir = rootProject.projectDir.parentFile.resolve("tools").resolve(toolPlatform)
             val suffix = if (toolPlatform.startsWith("windows")) ".exe" else ""
-            val entries = listOf("ffmpeg", "astcenc")
+            val entries = listOf("astcenc")
                 .map { toolDir.resolve(it + suffix) }
                 .filter { it.isFile }
             if (entries.isEmpty()) {

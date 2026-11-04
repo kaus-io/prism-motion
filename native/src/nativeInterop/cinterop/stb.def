@@ -1,0 +1,2 @@
+package = stb
+headers = stb_image.h
