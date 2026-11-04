@@ -39,4 +39,5 @@ include(
     ":prism-motion-engine-vap",
     ":prism-motion-probe",
     ":prism-motion-cli",
+    ":prism-motion-utils",
 )

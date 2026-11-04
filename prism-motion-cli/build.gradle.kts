@@ -59,7 +59,10 @@ kotlin {
 
     sourceSets {
         val commonMain by getting {
-            dependencies { api(projects.prismMotionProbe) }
+            dependencies {
+                api(projects.prismMotionProbe)
+                api(projects.prismMotionUtils)
+            }
         }
         val cinteropMain by creating { dependsOn(commonMain) }
         val posixMain by creating { dependsOn(commonMain) }

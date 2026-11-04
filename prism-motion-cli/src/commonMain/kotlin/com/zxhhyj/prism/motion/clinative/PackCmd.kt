@@ -1,6 +1,8 @@
 package com.zxhhyj.prism.motion.clinative
 
 import com.zxhhyj.prism.motion.probe.AnimationProbe
+import com.zxhhyj.prism.motion.utils.err
+import com.zxhhyj.prism.motion.utils.Platform
 
 /** pack vap / pack kap：用内嵌（或外部）ffmpeg、astcenc 完成帧序列打包。 */
 internal object PackCmd {

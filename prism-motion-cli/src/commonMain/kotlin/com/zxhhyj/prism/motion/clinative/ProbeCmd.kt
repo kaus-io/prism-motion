@@ -5,6 +5,8 @@ import com.zxhhyj.prism.motion.probe.AnimationProbe
 import com.zxhhyj.prism.motion.probe.ProbeIssue
 import com.zxhhyj.prism.motion.probe.ProbeResult
 import com.zxhhyj.prism.motion.probe.ProbeSeverity
+import com.zxhhyj.prism.motion.utils.err
+import com.zxhhyj.prism.motion.utils.Platform
 
 /** engines / probe / check 三个只读命令。 */
 internal object ProbeCmd {

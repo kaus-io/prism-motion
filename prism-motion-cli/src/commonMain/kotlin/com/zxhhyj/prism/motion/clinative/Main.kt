@@ -1,6 +1,8 @@
 package com.zxhhyj.prism.motion.clinative
 
 import kotlin.system.exitProcess
+import com.zxhhyj.prism.motion.utils.err
+import com.zxhhyj.prism.motion.utils.Platform
 
 internal const val EXIT_OK: Int = 0
 internal const val EXIT_VALIDATION: Int = 1

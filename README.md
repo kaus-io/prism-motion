@@ -11,6 +11,7 @@
 | `prism-motion-engine-kap` | Android | KAP（KTX2 + Vulkan）引擎 |
 | `prism-motion-engine-vap` | Android | VAP（MediaCodec）引擎 |
 | `prism-motion-probe` | JVM + Kotlin/Native | MP4 / KTX2 容器探测与校验，不解码 |
+| `prism-motion-utils` | JVM + Kotlin/Native | 平台工具：文件读写（kotlinx-io）、进程、env、临时目录、可执行路径 |
 | `prism-motion-cli` | Kotlin/Native | CLI：探测、校验、图片帧打包（与上面同一个 Gradle build） |
 
 ## 契约
@@ -81,7 +82,8 @@ prism-motion.kexe pack vap --frames frames/ --out out.mp4 --fps 30
 插件 classloader 下解析，否则 K/N 的 build service 会在兄弟项目间冲突（同 `mandysa` 的做法）。
 
 文件系统统一走 [kotlinx-io](https://github.com/Kotlin/kotlinx-io)（`0.9.2`），
-Linux / Windows / macOS 共用一份读写实现；只有进程、环境变量、权限这些系统调用保留平台 actual。
+Linux / Windows / macOS / JVM 共用一份读写实现；只有进程、环境变量、权限这些系统调用保留平台 actual。
+这些平台代码集中在 `prism-motion-utils`（约 15 行/平台），CLI 与后续工具都可复用。
 
 链接完成后 `embedTools` 任务把 `thirdparty/tools/<platform>/astcenc` 追加到可执行文件末尾
 （`PMTOOLS1` payload），运行时首次使用解压到 `~/.cache/prism-motion/tools/`。

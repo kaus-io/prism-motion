@@ -1,5 +1,7 @@
 package com.zxhhyj.prism.motion.clinative
 
+import com.zxhhyj.prism.motion.utils.Platform
+
 /** 外部工具查找：环境变量 → 可执行文件同级 tools/ → 缓存 → 内嵌 payload → PATH。 */
 internal object Tools {
 
