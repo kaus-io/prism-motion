@@ -142,3 +142,28 @@ tasks.register("embedTools") {
     dependsOn("embedToolsLinux", "embedToolsWindows")
     if (onMac) dependsOn("embedToolsMacosArm64", "embedToolsMacosX64")
 }
+
+// ---- 第三方库缺失时给出明确提示，而不是让链接报一堆找不到符号 ----
+
+val thirdpartyPlatform = if (hostOs.contains("windows")) "windows-x86_64" else "linux-x86_64"
+val requiredThirdparty = listOf(
+    "include/stb_image.h",
+    "include/openh264/codec_api.h",
+    "lib/$thirdpartyPlatform/libstb.a",
+    "lib/$thirdpartyPlatform/libopenh264.a",
+    "lib/$thirdpartyPlatform/libprismcodec.a",
+).map { projectDir.resolve("thirdparty/$it") }
+
+tasks.configureEach {
+    if (name.startsWith("link") || name.startsWith("cinterop")) {
+        doFirst {
+            val missing = requiredThirdparty.filterNot { it.exists() }
+            if (missing.isNotEmpty()) {
+                throw GradleException(
+                    "缺少第三方库：\n" + missing.joinToString("\n") { "  - $it" } +
+                        "\n先运行 ./thirdparty/build-thirdparty.sh $thirdpartyPlatform（需要 cc 与 nasm）",
+                )
+            }
+        }
+    }
+}
