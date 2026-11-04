@@ -17,8 +17,8 @@ internal object ProbeCmd {
     )
 
     private val ENGINES = listOf(
-        EngineInfo("Vap", AnimationFormat.Vap, decode = listOf("android"), encode = listOf("jvm", "linuxX64")),
-        EngineInfo("Kap", AnimationFormat.Kap, decode = listOf("android"), encode = listOf("jvm", "linuxX64")),
+        EngineInfo("Vap", AnimationFormat.Vap, decode = listOf("android"), encode = listOf("linuxX64")),
+        EngineInfo("Kap", AnimationFormat.Kap, decode = listOf("android"), encode = listOf("linuxX64")),
     )
 
     fun engines(asJson: Boolean): Int {
