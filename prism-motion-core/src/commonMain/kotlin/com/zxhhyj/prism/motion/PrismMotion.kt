@@ -43,7 +43,10 @@ public data class PrismMotionRequest(
     val source: PrismMotionSource,
     /** 显式指定引擎；null 时按 [PrismMotionEngine.supports] 自动选择。 */
     val engine: PrismMotionEngineId? = null,
+    /** 额外播放次数，-1 表示无限循环。 / Extra plays; -1 loops indefinitely. */
     val repeatCount: Int = 0,
+    /** 加载后自动播放；false 时只准备首帧。 / Play on load; false prepares a still frame. */
+    val autoPlay: Boolean = true,
 )
 
 public sealed interface PrismMotionStatus {
@@ -66,6 +69,15 @@ public interface PrismMotionResource {
     public val hasOutput: Boolean
     public val progress: Float
     public val isPlaying: Boolean
+
+    /** 累计成功提交帧数；未知时为 null，不等同物理屏幕扫描帧数。 / Successful frame submissions, or null if unavailable; not scanout timing. */
+    public val presentedFrameCount: Long? get() = null
+
+    /** 底层播放错误；避免把空白输出误当成低开销。 / Playback failure, so blank output is not mistaken for low overhead. */
+    public val playbackError: Throwable? get() = null
+
+    /** 设置额外播放次数；-1 无限循环。 / Sets extra plays; -1 loops indefinitely. */
+    public fun setRepeatCount(repeatCount: Int): Unit = Unit
 
     public fun attach(surface: PrismMotionSurface, width: Int, height: Int)
     public fun resize(width: Int, height: Int)

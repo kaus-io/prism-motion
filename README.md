@@ -7,7 +7,7 @@
 | 模块 | 目标平台 | 作用 |
 | --- | --- | --- |
 | `prism-motion-core` | Android + JVM（KMP） | 源、请求、引擎、注册表、输出面、状态契约；无 Compose |
-| `prism-motion-compose` | Android + JVM（Compose Multiplatform） | `PrismMotionOutput` / `PrismMotionRenderer` / `PrismMotionState` / `Animation()` |
+| `prism-motion-compose` | Android + JVM（Compose Multiplatform） | `PrismMotionOutput` / `PrismMotionRenderer` / `PrismMotionState` / `PrismMotion()` |
 | `prism-motion-engine-kap` | Android + JVM | KAP 引擎：Android 走 KTX2+Vulkan，JVM 走自研解码 + Compose 绘制 |
 | `prism-motion-engine-vap` | Android + JVM | VAP 引擎（Android 走 MediaCodec；JVM 走自有 MP4 解封装 + OpenH264 解码） |
 | `prism-motion-probe` | JVM + Kotlin/Native | MP4 / KTX2 容器探测与校验，不解码 |
@@ -17,8 +17,10 @@
 | `prism-motion-utils` | JVM + Kotlin/Native | 平台工具：文件读写（kotlinx-io）、进程、env、临时目录、可执行路径 |
 | `utils-jvm` | JVM | 纯 JVM 胶水：原生库（JNA）查找 |
 | `prism-motion-cli` | Kotlin/Native | CLI：探测、校验、图片帧打包（与上面同一个 Gradle build） |
-| `demo-desktop` | JVM（Compose Multiplatform） | 演示与基准：同屏多实例播放、帧率/RSS 采样 |
-| `demo-android` | Android App | 同款演示；bench 模式输出帧间隔与 PSS 曲线 |
+| `demo-desktop` | JVM（Compose Multiplatform） | 交互演示 |
+| `demo-android` | Android App | Android 交互演示 |
+| `bench-jvm` | JVM | 独立桌面测试工具（RSS，不是 PSS） |
+| `bench-android` | Android App | 独立基准，校验真实输出、提交帧率、CPU、PSS |
 
 ## 契约
 
@@ -32,46 +34,46 @@
 
 ## 演示与基准
 
-`demo-desktop` 是 Compose Multiplatform 桌面应用，同时充当基准工具。
+Demo 只负责交互，基准是独立应用。
 
 ```bash
-# 1. 生成资产：尺寸 × 透明/不透明 × 质量（VAP 码率、KAP 像素格式）
-./gradlew :demo-desktop:generateDemoAssets               # 默认 128/256/512
-./gradlew :demo-desktop:generateDemoAssets -PdemoSizes=128,256 -PdemoFormats=astc-8x8
-
-# 2. 交互演示：同屏多实例、切换资产、看 fps / RSS
+./gradlew :demo-desktop:generateDemoAssets -PdemoSizes=128,256 -PdemoFrames=24 -PdemoBitrates=150,1500
 ./gradlew :demo-desktop:run
-
-# 3. 窗口基准：帧间隔 + RSS 曲线
-./gradlew :demo-desktop:run --args="--bench --size 256"
-
-# 4. 加载基准：打开 N 个实例、解出全部帧的耗时与内存
-./gradlew :demo-desktop:run --args="--bench --load --size 512"
-```
-
-结果写入 `demo-desktop/build/reports/bench.csv` 与 `bench-load.csv`。
-
-### Android
-
-```bash
-# 生成小体积资产（默认全部资产会让 APK 到几十 MB）
-./gradlew :demo-desktop:generateDemoAssets -PdemoSizes=128,256 -PdemoFormats=astc-8x8
-
-# 连接设备后跑基准（PSS 来自 Debug.MemoryInfo，每个场景写一行）
-./gradlew :demo-android:assembleDebug
-adb install -r demo-android/build/outputs/apk/debug/demo-android-debug.apk
-adb shell am start -n com.zxhhyj.prism.motion.demo.android/.MainActivity --ez bench true
-adb logcat -s prism-bench:I          # 等到 BENCH_DONE
-adb pull /sdcard/Android/data/com.zxhhyj.prism.motion.demo.android/files/bench.csv
-
-# 只想手动玩一下
 ./gradlew :demo-android:installDebug
+
+./gradlew :bench-jvm:run --args="--size 256"
+ASSETS='alpha-256-astc8x8 alpha-256-rgba8 alpha-256-b1500' \
+  ./scripts/run-android-bench.sh <adb-serial> --counts 0,1,8,16 --measure-ms 2500
 ```
 
-资产目录默认是 `../demo-data`，可用 `-PdemoAssets=<dir>` 指向别的目录。
+Android 的汇总和采样时序分别保存到 [bench.csv](<bench-android/build/reports/bench.csv>) 和 [bench-samples.csv](<bench-android/build/reports/bench-samples.csv>)。
+计数 0 是采样器基线。每个资产单独启动进程；同一资产内的后续场景为进程内热启动。
+加载失败、没有输出、实例不推进或固定像素网格超出屏幕均记为 `valid=false`，脚本最终返回非零。
+`submitted_fps` 是每实例成功提交帧率，`ui_fps` / `ui_*` 是 UI 时钟稳定性，不能混为一谈。
+PSS 在后台 4Hz 采样，CPU 的 100% 表示占满一个逻辑核；测量窗口不包含加载和预热。
+`first_output_ms` 是所有实例具备引擎可显示内容的最晚观察时间，**不是物理屏幕扫描时刻**。
+KAP 提交计数有约 100ms 的发布粒度，短测量窗口会有边界误差；结果含采样器自身开销，未扣除基线。
+桌面工具仍属于探索性测量；其 RSS、UI 时钟和加载就绪时间不等同 Android 的 PSS、提交帧率和显示内容观察。
 
-资产命名：`{alpha|opaque}-{size}-{quality}.{mp4|ktx}`，例如
-`alpha-512-b6000.mp4`、`opaque-256-rgba8.ktx`。`--size` / `--count` / `--engine` 可以过滤场景。
+资产目录默认是模块相对路径 `../demo-data`，Gradle 可用 `-PdemoAssets=<dir>` 覆盖；运行脚本时可设置 `DEMO_ASSETS`。
+资产命名：`{alpha|opaque}-{size}-{quality}.{mp4|ktx}`；`ASSETS` 使用不带后缀的精确名称。
+
+**旧图已作废**：[历史图表](<docs/charts/fps_vs_count.png>) 来自未验证播放的旧 bench，不能用来比较引擎性能；
+特别是 KAP `first_frame=-1` 的行实际上没有成功加载。源码对齐、修复和当前验证见 [性能说明](<docs/performance.md>)。
+
+### Android 资产打包
+
+KAP 通过 `AssetManager.openFd()` / native FD 读取 KTX，宿主必须禁止压缩 `.ktx` 和兼容的 `.ktx2`：
+
+```kotlin
+android {
+    androidResources { noCompress += listOf("ktx", "ktx2") }
+}
+```
+
+统一请求默认自动播放，`autoPlay=false` 只准备首帧；`repeatCount=0` 播一次、`-1` 无限循环。
+播放模式默认保持 Hanna 实际使用的 `Streaming(32)`，可向 Android `PrismMotionKapEngine` 传入其它 `KtxPlaybackMode`；
+`Static` 用更高显存换取较少的逐帧上传，不作为自动降级策略。
 
 ## 构建
 
@@ -176,7 +178,7 @@ git submodule update --init --recursive
 
 - `engine-kap` 的 JVM 实现是自己写的：KTX2 解析 + 帧解码。RGBA8 直接读像素；
   ASTC 优先经 **JNA 调用 `libastcenc.so`**（进程内，无临时文件），库不可用时退回
-  `astcenc -dl` 子进程。库查找顺序：`PRISM_MOTION_ASTC_LIB` > `~/.cache/prism-motion/native/`
+  `astcenc -dl` / `-ds` 子进程（按线性 / sRGB profile）。库查找顺序：`PRISM_MOTION_ASTC_LIB` > `~/.cache/prism-motion/native/`
   > `thirdparty/native/<platform>/` > 系统路径。
 - `compose`、`engine-vap`、`engine-kap` 都已同时支持 Android 和 JVM（Compose Multiplatform）。
 - **JVM 侧不再依赖 FFmpeg**：`engine-vap` 自带 MP4 解封装（`VapMp4`），解码用
@@ -185,5 +187,7 @@ git submodule update --init --recursive
 - Windows 产物只做了交叉编译验证，没有真机 / wine 运行；且缺少 stb_image / OpenH264 的 mingw 交叉编译，
   因此 PNG 解码与 H.264 编码在 Windows 上会明确报错（其它命令正常）。
 - macOS 目标只能在 macOS 主机上构建。
-- H.264 输出固定为 Constrained Baseline（OpenH264 的能力上限），压缩效率低于 x264/x265，
-  对 UI 动效够用；实测同码率下体积约大 15%、PSNR 低 2–3 dB。
+- 当前 H.264 编码配置为 Constrained Baseline；没有可靠的同源感知质量对照，
+  不宣称相对 x264/x265 的固定体积或 PSNR 差值。
+- JVM 仍在打开时预解码整段帧，长片段内存与加载延迟随帧数增长；有界位图缓存不改变这一限制。
+- 当前 OpenH264 shim 没有延迟帧 flush，不宣称完整支持 B-frame MP4。

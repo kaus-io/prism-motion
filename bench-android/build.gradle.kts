@@ -18,6 +18,8 @@ android {
     }
 
     buildFeatures { compose = true }
+    // KAP 使用 openFd/mmap；压缩资产无法打开。 / KAP openFd/mmap requires stored assets.
+    androidResources { noCompress += listOf("ktx", "ktx2") }
 
     val demoAssets = providers.gradleProperty("demoAssets").getOrElse("../demo-data")
     sourceSets.getByName("main").assets.srcDir(demoAssets)
@@ -33,4 +35,5 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    testImplementation(libs.junit)
 }

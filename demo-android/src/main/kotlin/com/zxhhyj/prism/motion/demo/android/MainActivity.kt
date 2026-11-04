@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -110,17 +111,17 @@ fun DemoApp(context: Context) {
             Text("×$count", fontSize = 11.sp)
             Button(onClick = { count = (count * 2).coerceAtMost(32) }) { Text("+") }
         }
-        Text("fps ${"%.1f".format(fps)}   PSS $pss MB", fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp))
+        Text("UI fps ${"%.1f".format(fps)}   PSS $pss MB", fontSize = 11.sp, modifier = Modifier.padding(horizontal = 8.dp))
 
         LazyVerticalGrid(columns = GridCells.Adaptive(120.dp), modifier = Modifier.fillMaxSize().background(Color.Black)) {
             items(count) { item ->
                 key(item) {
                     val asset = assets.getOrNull(index)
                     val state = rememberPrismMotionState(
-                        remember(asset, item) { PrismMotionRequest(PrismMotionSource.Asset(asset.orEmpty())) },
+                        remember(asset, item) { PrismMotionRequest(PrismMotionSource.Asset(asset.orEmpty()), repeatCount = -1) },
                         registry,
                     )
-                    PrismMotion(state, modifier = Modifier.fillMaxWidth().padding(2.dp), contentScale = ContentScale.Fit)
+                    PrismMotion(state, modifier = Modifier.fillMaxWidth().aspectRatio(1f).padding(2.dp), contentScale = ContentScale.Fit)
                 }
             }
         }

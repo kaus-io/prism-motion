@@ -14,6 +14,12 @@ kotlin {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11) }
     }
     sourceSets {
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
+        jvmTest.dependencies {
+            implementation(libs.kotlinx.coroutines.core)
+        }
         commonMain.dependencies {
             api(projects.prismMotionCore)
             api(compose.runtime)

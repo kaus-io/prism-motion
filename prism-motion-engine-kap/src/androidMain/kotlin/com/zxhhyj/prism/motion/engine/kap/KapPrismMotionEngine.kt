@@ -18,9 +18,24 @@ import com.zxhhyj.kap.android.KtxPlaybackMode
 import com.zxhhyj.kap.android.loadKtxAnimationAsync
 import com.zxhhyj.kap.compose.KtxAnimation
 import com.zxhhyj.kap.compose.KtxAnimationState
+import com.zxhhyj.kap.android.KtxAnimationComposition
+import com.zxhhyj.kap.android.KtxPlayerStatus
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
-/** KAP（KTX2 纹理序列 / Vulkan）作为统一门面的引擎实现。 */
-public class PrismMotionKapEngine(private val context: Context) : PrismMotionEngine {
+/**
+ * 复用原版 KAP 的流式 Vulkan 路径，不在门面层复制帧或替换调度器。
+ * Uses the original streaming Vulkan path without copying frames or replacing its scheduler.
+ */
+public class PrismMotionKapEngine(
+    context: Context,
+    private val playbackMode: KtxPlaybackMode = KtxPlaybackMode.Streaming(ringSize = 32),
+) : PrismMotionEngine {
+    private val context = context.applicationContext
+    private val loadMutex = Mutex()
+    private var cachedAsset: KtxAnimationSource.Asset? = null
+    private var cachedComposition: KtxAnimationComposition? = null
+
     override val id: PrismMotionEngineId = PrismMotionEngineId.Kap
 
     override fun supports(source: PrismMotionSource): Boolean = when (source) {
@@ -37,9 +52,21 @@ public class PrismMotionKapEngine(private val context: Context) : PrismMotionEng
             is PrismMotionSource.File -> KtxAnimationSource.File(source.path)
             is PrismMotionSource.Bytes -> error("KAP embedded engine does not accept in-memory bytes")
         }
-        val composition = loadKtxAnimationAsync(context.applicationContext, ktxSource)
-        val state = KtxAnimationState(composition, KtxPlaybackMode.Streaming(ringSize = 32))
-        return KapAnimationResource(state)
+        val composition = if (ktxSource is KtxAnimationSource.Asset) {
+            // 同资产并发打开只解析一次头部；不缓存播放器/纹理，文件源仍每次重读。
+            // Coalesce immutable asset headers, never players/textures; mutable files are reloaded.
+            loadMutex.withLock {
+                if (cachedAsset == ktxSource) cachedComposition!! else {
+                    loadKtxAnimationAsync(context, ktxSource).also {
+                        cachedAsset = ktxSource
+                        cachedComposition = it
+                    }
+                }
+            }
+        } else {
+            loadKtxAnimationAsync(context, ktxSource)
+        }
+        return KapAnimationResource(KtxAnimationState(composition, playbackMode))
     }
 
     private companion object {
@@ -55,6 +82,12 @@ private class KapAnimationResource(internal val player: KtxAnimationState) : Pri
     override val hasOutput: Boolean get() = player.hasDisplayContent
     override val progress: Float get() = player.progress
     override val isPlaying: Boolean get() = player.isPlaying
+    override val presentedFrameCount: Long get() = player.presentedCount
+    override val playbackError: Throwable? get() = (player.status as? KtxPlayerStatus.Failed)?.error
+    override fun setRepeatCount(repeatCount: Int) {
+        require(repeatCount >= -1)
+        player.repeatCount = repeatCount
+    }
 
     // 目前只支持 TextureView 宿主：Surface 由 [KtxAnimation] 自己持有。
     override fun attach(surface: PrismMotionSurface, width: Int, height: Int) = Unit

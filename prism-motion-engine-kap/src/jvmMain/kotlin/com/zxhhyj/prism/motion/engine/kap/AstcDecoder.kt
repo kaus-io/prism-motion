@@ -1,63 +1,88 @@
 package com.zxhhyj.prism.motion.engine.kap
 
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import javax.imageio.ImageIO
 
-/**
- * ASTC 解码：把 KTX2 里的裸块包成 `.astc` 文件，交给外部 astcenc 解成 PNG 再读回 RGBA。
- * ASTC decoding: wrap raw KTX2 blocks into an `.astc` file, let astcenc decode to PNG, read back as RGBA.
- *
- * astcenc 不是 JVM 库，所以这里依赖可执行文件：`PRISM_MOTION_ASTCENC` 环境变量、
- * `~/.cache/prism-motion/tools/astcenc` 或 PATH 中的 `astcenc`。
- */
+/** 原生库优先，缺库时才退回 astcenc 工具。 / Uses the native library, falling back to the CLI only when unavailable. */
 internal object AstcDecoder {
+    private val footprints = listOf(
+        4 to 4, 5 to 4, 5 to 5, 6 to 5, 6 to 6, 8 to 5, 8 to 6,
+        8 to 8, 10 to 5, 10 to 6, 10 to 8, 10 to 10, 12 to 10, 12 to 12,
+    )
 
     fun decode(blocks: ByteArray, width: Int, height: Int, vkFormat: Int): ByteArray {
-        val (blockWidth, blockHeight) = blockSize(vkFormat)
-        // 优先走 JVM 内的 C 调用；库不可用时退回 astcenc 子进程。
-        AstcNative.decode(blocks, width, height, blockWidth, blockHeight)?.let { return it }
-        val tool = findTool()
+        val layout = layout(width, height, vkFormat)
+        layout.validate(blocks)
+        AstcNative.decode(blocks, width, height, layout.blockWidth, layout.blockHeight, layout.srgb)?.let { return it }
+        return decodeWithTool(blocks, layout, findTool())
+    }
+
+    internal fun layout(width: Int, height: Int, vkFormat: Int): AstcNative.Layout {
+        require(vkFormat in 157..184) { "Not an ASTC UNORM/SRGB format: $vkFormat" }
+        val (blockWidth, blockHeight) = footprints[(vkFormat - 157) / 2]
+        return AstcNative.Layout(width, height, blockWidth, blockHeight, (vkFormat - 157) % 2 == 1)
+    }
+
+    internal fun decodeWithTool(blocks: ByteArray, layout: AstcNative.Layout, tool: String): ByteArray {
         val dir = Files.createTempDirectory("prism-kap-astc").toFile()
         try {
             val astc = File(dir, "layer.astc")
-            astc.writeBytes(astcFile(blocks, width, height, blockWidth, blockHeight))
+            astc.writeBytes(astcFile(blocks, layout))
             val png = File(dir, "layer.png")
-            val process = ProcessBuilder(tool, "-dl", astc.absolutePath, png.absolutePath)
-                .redirectErrorStream(true)
-                .start()
-            process.inputStream.readBytes()
-            val exit = process.waitFor()
-            check(exit == 0) { "astcenc 解码失败（退出码 $exit）" }
-            val image = ImageIO.read(png) ?: error("无法读取 astcenc 输出")
-            return toRgba(image)
+            val process = try {
+                ProcessBuilder(tool, if (layout.srgb) "-ds" else "-dl", astc.absolutePath, png.absolutePath, "-j", "1")
+                    .redirectErrorStream(true)
+                    .start()
+            } catch (failure: IOException) {
+                throw IllegalStateException("ASTC native library unavailable and cannot start astcenc tool '$tool'", failure)
+                    .also { AstcNative.loadFailure?.let(it::addSuppressed) }
+            }
+            try {
+                // 持续排空输出但只保留尾部诊断，避免管道堵塞及无界内存。 / Drain output, retaining only bounded diagnostics.
+                val output = StringBuilder()
+                process.inputStream.bufferedReader().use { reader ->
+                    val chunk = CharArray(1024)
+                    while (true) {
+                        val count = reader.read(chunk)
+                        if (count < 0) break
+                        output.append(chunk, 0, count)
+                        if (output.length > 4096) output.delete(0, output.length - 4096)
+                    }
+                }
+                val exit = process.waitFor()
+                check(exit == 0) { "astcenc failed (exit $exit): ${output.toString().trim()}" }
+                val image = ImageIO.read(png) ?: error("Cannot read astcenc output PNG")
+                check(image.width == layout.width && image.height == layout.height) {
+                    "astcenc output dimensions ${image.width}x${image.height}; expected ${layout.width}x${layout.height}"
+                }
+                return toRgba(image)
+            } catch (failure: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw IllegalStateException("Interrupted while waiting for astcenc", failure)
+            } finally {
+                process.destroyForcibly()
+            }
         } finally {
             dir.deleteRecursively()
         }
     }
 
-    private fun blockSize(vkFormat: Int): Pair<Int, Int> = when (vkFormat) {
-        157 -> 4 to 4
-        165 -> 6 to 6
-        171 -> 8 to 8
-        179 -> 10 to 10
-        183 -> 12 to 12
-        else -> error("不是 ASTC 格式: $vkFormat")
-    }
-
-    /** ASTC 文件头：magic + 块尺寸 + (宽高各减一，24 位小端) 。 */
-    private fun astcFile(blocks: ByteArray, width: Int, height: Int, blockWidth: Int, blockHeight: Int): ByteArray {
+    /** ASTC 头存实际宽、高、深度（24 位小端），不是减一。 / The ASTC header stores actual dimensions, not dimensions minus one. */
+    internal fun astcFile(blocks: ByteArray, layout: AstcNative.Layout): ByteArray {
+        layout.validate(blocks)
         val header = ByteArray(16)
         header[0] = 0x13
         header[1] = 0xAB.toByte()
         header[2] = 0xA1.toByte()
         header[3] = 0x5C
-        header[4] = blockWidth.toByte()
-        header[5] = blockHeight.toByte()
+        header[4] = layout.blockWidth.toByte()
+        header[5] = layout.blockHeight.toByte()
         header[6] = 1
-        putU24(header, 7, width - 1)
-        putU24(header, 10, height - 1)
-        putU24(header, 13, 0)
+        putU24(header, 7, layout.width)
+        putU24(header, 10, layout.height)
+        putU24(header, 13, 1)
         return header + blocks
     }
 

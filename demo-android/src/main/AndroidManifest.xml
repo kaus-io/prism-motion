@@ -3,6 +3,7 @@
     <application
         android:label="prism-motion demo"
         android:theme="@style/Theme.Demo">
+        <meta-data android:name="com.zxhhyj.kap.DEBUG_EXPERIMENTS" android:value="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

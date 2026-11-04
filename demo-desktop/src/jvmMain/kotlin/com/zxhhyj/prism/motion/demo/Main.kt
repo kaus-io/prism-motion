@@ -2,6 +2,7 @@ package com.zxhhyj.prism.motion.demo
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -107,7 +108,7 @@ fun DemoApp() {
             Text("×$count", fontSize = 12.sp)
             Button(onClick = { count = (count * 2).coerceAtMost(64) }) { Text("+ 数量", fontSize = 12.sp) }
             Text(
-                "fps ${"%.1f".format(fps)}",
+                "UI fps ${"%.1f".format(fps)}",
                 fontSize = 12.sp,
             )
         }
@@ -120,11 +121,11 @@ fun DemoApp() {
                 key(index) {
                     val state = rememberPrismMotionState(
                         remember(asset, index) {
-                            PrismMotionRequest(PrismMotionSource.File(asset?.absolutePath.orEmpty()))
+                            PrismMotionRequest(PrismMotionSource.File(asset?.absolutePath.orEmpty()), repeatCount = -1)
                         },
                         registry,
                     )
-                    Box(Modifier.padding(4.dp).fillMaxWidth()) {
+                    Box(Modifier.padding(4.dp).fillMaxWidth().aspectRatio(1f)) {
                         PrismMotion(state, contentScale = ContentScale.Fit)
                     }
                 }

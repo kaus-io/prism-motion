@@ -1,0 +1,67 @@
+{
+  "date": "2026-11-04",
+  "device": {
+    "model": "CC4PRO",
+    "sdk": 33,
+    "abi": "arm64-v8a",
+    "display_pixels": [
+      2000,
+      1200
+    ],
+    "refresh_hz": 60
+  },
+  "counts": [
+    0,
+    1,
+    8,
+    16
+  ],
+  "warmup_ms": 500,
+  "measure_ms": 2500,
+  "process_restart": "per asset",
+  "rows": 28,
+  "valid_rows": 26,
+  "assets": [
+    {
+      "name": "alpha-128-astc8x8.ktx",
+      "bytes": 98608,
+      "sha256": "797cd1301a57f4ee9e7e71a2b4300a0997c82b24063d75b6ae9f4ed9e4e0a3ca"
+    },
+    {
+      "name": "alpha-256-astc8x8.ktx",
+      "bytes": 393520,
+      "sha256": "f2ddc74ce35a12c8dab9b5469cda3bf34a506d6fd128d92907001bbfed0c8aa5"
+    },
+    {
+      "name": "alpha-256-b1500.mp4",
+      "bytes": 27181,
+      "sha256": "60176c67f6c9402e2b1d78ccce7e7fd8970e590687979a3b59849c9b6815c148"
+    },
+    {
+      "name": "alpha-256-rgba8.ktx",
+      "bytes": 6291796,
+      "sha256": "fb2f4500181c9cc57d9b8fad5c30c0e29942fe171f41cec890a04d24e8e851af"
+    },
+    {
+      "name": "opaque-256-astc8x8.ktx",
+      "bytes": 393520,
+      "sha256": "1352f1d3b9ab29f59c5aa810c3140a89230f991a9ea3668ab6aca89b79987c3f"
+    },
+    {
+      "name": "opaque-256-b1500.mp4",
+      "bytes": 15497,
+      "sha256": "0807c7fdeef92a4a5458173cacdea31e5694c3068acfcd022c49664359fbbc1c"
+    },
+    {
+      "name": "opaque-256-rgba8.ktx",
+      "bytes": 6291796,
+      "sha256": "5e746d3fcbdf880b74e907a5d8575773df7172645f92ecf2c5510b7519334610"
+    }
+  ],
+  "limitations": [
+    "One short sample per scenario; not a controlled before/after study",
+    "CPU includes sampling overhead; PSS peak includes startup",
+    "First output is engine-observed content, not physical scanout",
+    "Two VAP16 rows fail MediaCodec.start and are invalid"
+  ]
+}

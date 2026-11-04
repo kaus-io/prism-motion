@@ -22,6 +22,7 @@ kotlin {
         }
         androidMain.dependencies {
             api(libs.vap.compose)
+            implementation(libs.kotlinx.coroutines.core)
         }
         jvmMain.dependencies {
             implementation(projects.utilsJvm)

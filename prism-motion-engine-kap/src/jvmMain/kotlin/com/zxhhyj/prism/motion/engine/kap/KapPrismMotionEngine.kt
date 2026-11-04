@@ -38,12 +38,14 @@ public class PrismMotionKapEngine : PrismMotionEngine {
     }
 
     override suspend fun open(source: PrismMotionSource): PrismMotionResource {
-        val bytes = when (source) {
-            is PrismMotionSource.Asset -> error("KAP JVM 不支持 Android asset: ${source.path}")
-            is PrismMotionSource.File -> File(source.path).readBytes()
-            is PrismMotionSource.Bytes -> source.bytes
+        val animation = withContext(Dispatchers.IO) {
+            val bytes = when (source) {
+                is PrismMotionSource.Asset -> error("KAP JVM 不支持 Android asset: ${source.path}")
+                is PrismMotionSource.File -> File(source.path).readBytes()
+                is PrismMotionSource.Bytes -> source.bytes
+            }
+            decode(bytes)
         }
-        val animation = withContext(Dispatchers.IO) { decode(bytes) }
         return KapJvmResource(animation)
     }
 

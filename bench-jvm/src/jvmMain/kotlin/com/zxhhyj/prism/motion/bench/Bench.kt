@@ -36,8 +36,8 @@ import java.io.File
 import kotlin.system.exitProcess
 
 /**
- * 基准工具：逐场景播放，记录 CPU / PSS / 帧率 / 稳定性 / 资产大小 / 首帧上屏。
- * Benchmark: CPU, PSS, frame rate, stability, asset size and time-to-first-frame per scenario.
+ * 探索性桌面工具：记录 CPU / RSS / UI 时钟 / 资产大小 / 加载就绪时间，非真实呈现基准。
+ * Exploratory desktop tool: CPU, RSS, UI cadence, asset size and load readiness; not presentation timing.
  */
 data class Scenario(
     val asset: AssetInfo,
@@ -167,7 +167,7 @@ private fun BenchHost(scenarios: List<Scenario>, results: ArrayList<BenchResult>
                 key(item) {
                     val state = rememberPrismMotionState(
                         remember(index, item) {
-                            PrismMotionRequest(PrismMotionSource.File(scenario.asset.file.absolutePath))
+                            PrismMotionRequest(PrismMotionSource.File(scenario.asset.file.absolutePath), repeatCount = -1)
                         },
                         registry,
                     )
@@ -187,7 +187,7 @@ private fun writeCsv(results: List<BenchResult>) {
     file.bufferedWriter().use { out ->
         out.write(
             "asset,engine,variant,size,quality,asset_bytes,count,frames,avg_ms,p95_ms,p99_ms,max_ms," +
-                "jank_ratio,fps_std,fps,pss_start_mb,pss_end_mb,pss_max_mb,cpu_percent,first_frame_ms\n",
+                "ui_jank_ratio,ui_frame_std_ms,ui_fps,rss_start_mb,rss_end_mb,rss_max_mb,cpu_percent,first_ready_ms\n",
         )
         for (result in results) {
             val asset = result.scenario.asset

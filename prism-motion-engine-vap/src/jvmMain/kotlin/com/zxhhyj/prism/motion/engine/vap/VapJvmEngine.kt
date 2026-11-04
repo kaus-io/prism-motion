@@ -26,12 +26,12 @@ public class PrismMotionVapEngine : PrismMotionEngine {
     }
 
     override suspend fun open(source: PrismMotionSource): PrismMotionResource {
-        val bytes = when (source) {
-            is PrismMotionSource.Asset -> error("VAP JVM 不支持 Android asset: ${source.path}")
-            is PrismMotionSource.File -> File(source.path).readBytes()
-            is PrismMotionSource.Bytes -> source.bytes
-        }
         val (frames, config) = withContext(Dispatchers.IO) {
+            val bytes = when (source) {
+                is PrismMotionSource.Asset -> error("VAP JVM 不支持 Android asset: ${source.path}")
+                is PrismMotionSource.File -> File(source.path).readBytes()
+                is PrismMotionSource.Bytes -> source.bytes
+            }
             val demuxed = VapMp4.demux(bytes)
             val i420Frames = VapDecodeNative.decodeAll(
                 demuxed.samples,
@@ -51,7 +51,7 @@ public class PrismMotionVapEngine : PrismMotionEngine {
 
 /** JVM 侧的 VAP 资源：帧已在打开时解码，这里只负责按索引取位图。 / JVM VAP resource: frames are pre-decoded. */
 internal class VapJvmResource(
-    private val frames: List<VapFrame>,
+    frames: List<VapFrame>,
     fps: Int,
 ) : JvmFrameResource(
     frameWidth = frames.first().width,
@@ -59,6 +59,12 @@ internal class VapJvmResource(
     frameCount = frames.size,
     fps = fps,
 ) {
+    private var frames = frames
+
+    override fun onRelease() {
+        frames = emptyList()
+    }
+
     override fun renderFrame(index: Int): ImageBitmap {
         val frame = frames[index]
         return rgbaToImageBitmap(frame.width, frame.height, frame.rgba)

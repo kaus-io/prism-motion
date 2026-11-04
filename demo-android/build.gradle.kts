@@ -16,6 +16,8 @@ android {
     }
 
     buildFeatures { compose = true }
+    // KAP 使用 openFd/mmap；压缩资产无法打开。 / KAP openFd/mmap requires stored assets.
+    androidResources { noCompress += listOf("ktx", "ktx2") }
 
     // 演示资产直接从仓库根目录的 demo-data 取，避免复制。
     // Demo assets come from the repository-level demo-data directory.

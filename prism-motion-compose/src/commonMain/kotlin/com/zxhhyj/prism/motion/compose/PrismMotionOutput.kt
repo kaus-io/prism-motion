@@ -2,9 +2,6 @@ package com.zxhhyj.prism.motion.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import com.zxhhyj.prism.motion.PrismMotionEngine
@@ -44,26 +41,25 @@ public class PrismMotionState internal constructor(
     internal val renderer: PrismMotionRenderer?,
     status: PrismMotionStatus,
 ) {
-    public var status: PrismMotionStatus by mutableStateOf(status)
-        internal set
+    private val loadStatus = status
+    public val status: PrismMotionStatus
+        get() = resource?.playbackError?.let { PrismMotionStatus.Failed(it) } ?: loadStatus
 
-    public var isPlaying: Boolean by mutableStateOf(false)
-        private set
+    /** 读取真实播放器状态，不额外维护可能失步的播放标志。 / Reads the actual player state without a second flag. */
+    public val isPlaying: Boolean get() = resource?.playbackError == null && resource?.isPlaying == true
 
-    public val hasOutput: Boolean get() = resource?.hasOutput == true
+    public val hasOutput: Boolean get() = resource?.playbackError == null && resource?.hasOutput == true
     public val progress: Float get() = resource?.progress ?: 0f
     public val durationMs: Long get() = resource?.durationMs ?: 0L
     public val width: Int get() = resource?.width ?: 0
     public val height: Int get() = resource?.height ?: 0
 
     public fun play() {
-        resource?.play() ?: return
-        isPlaying = true
+        resource?.play()
     }
 
     public fun pause() {
-        resource?.pause() ?: return
-        isPlaying = false
+        resource?.pause()
     }
 
     public fun seekTo(progress: Float) {
