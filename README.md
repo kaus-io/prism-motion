@@ -90,14 +90,30 @@ Kotlin/Native 的 `KotlinNativeBundleBuildService` 无法和 AGP 模块共存于
 | MP4 封装 | 本仓库 `Mp4Writer`（纯 Kotlin） | 同本仓库 |
 | ASTC 压缩 | [astcenc](https://github.com/ARM-software/astc-encoder) 4.8.0 | Apache-2.0 |
 
-首次构建前先跑：
+上游源码以 **git submodule** 固定版本，放在 `native/thirdparty/upstream/`：
+
+| submodule | 版本 | 许可 |
+| --- | --- | --- |
+| `cisco/openh264` | v2.6.0 | BSD-2-Clause |
+| `nothings/stb` | d14d46f | 公有领域 |
+
+克隆时带上子模块：
+
+```bash
+git clone --recursive https://github.com/kaus-io/prism-motion.git
+# 已克隆过：
+git submodule update --init --recursive
+```
+
+构建前先编译成静态库（产物不入库）：
 
 ```bash
 ./thirdparty/build-thirdparty.sh linux-x86_64   # 需要 cc 与 nasm
+# 没有系统 nasm 时：NASM_DIR=/path/to/nasm ./thirdparty/build-thirdparty.sh linux-x86_64
 ```
 
-脚本会下载并编译 `libstb.a`、`libopenh264.a`、`libprismcodec.a`（OpenH264 的 C 封装），
-放到 `thirdparty/lib/<platform>/`（不入库）。
+脚本只读 submodule、不联网，生成 `libstb.a`、`libopenh264.a`、`libprismcodec.a` 到
+`thirdparty/lib/<platform>/`。
 
 ## 已知限制
 

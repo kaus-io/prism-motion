@@ -13,7 +13,7 @@ kotlin {
         compilations.getByName("main").cinterops {
             val stb by creating {
                 defFile(project.file("src/nativeInterop/cinterop/stb.def"))
-                includeDirs(project.file("thirdparty/include"))
+                includeDirs(project.file("thirdparty/upstream/stb"))
             }
             val prismcodec by creating {
                 defFile(project.file("src/nativeInterop/cinterop/prismcodec.def"))
@@ -147,8 +147,8 @@ tasks.register("embedTools") {
 
 val thirdpartyPlatform = if (hostOs.contains("windows")) "windows-x86_64" else "linux-x86_64"
 val requiredThirdparty = listOf(
-    "include/stb_image.h",
-    "include/openh264/codec_api.h",
+    "upstream/stb/stb_image.h",
+    "upstream/openh264/codec/api/wels/codec_api.h",
     "lib/$thirdpartyPlatform/libstb.a",
     "lib/$thirdpartyPlatform/libopenh264.a",
     "lib/$thirdpartyPlatform/libprismcodec.a",
