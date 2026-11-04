@@ -22,6 +22,7 @@ kotlin {
             api(libs.vap.compose)
         }
         jvmMain.dependencies {
+            implementation(projects.utilsJvm)
             implementation(libs.jna)
             implementation(libs.kotlinx.coroutines.core)
         }

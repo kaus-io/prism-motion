@@ -4,7 +4,7 @@ import com.sun.jna.Library
 import com.sun.jna.Memory
 import com.sun.jna.Native
 import com.sun.jna.Pointer
-import java.io.File
+import com.zxhhyj.prism.motion.utils.JvmNativeLoader
 
 /**
  * 通过 JNA 调用 `libprismdecode.so`（OpenH264 解码器 + 我们的 C 封装），
@@ -44,29 +44,6 @@ internal object VapDecodeNative {
         }
     }
 
-    private fun resolveLibrary(): String {
-        System.getenv("PRISM_MOTION_DECODE_LIB")?.takeIf { it.isNotBlank() }?.let { return it }
-        val name = System.mapLibraryName("prismdecode")
-        val cached = File(System.getProperty("user.home"), ".cache/prism-motion/native/$name")
-        if (cached.isFile) return cached.absolutePath
-        val local = File("thirdparty/native/${platform()}/$name")
-        if (local.isFile) return local.absolutePath
-        return "prismdecode"
-    }
-
-    private fun platform(): String {
-        val os = System.getProperty("os.name").lowercase()
-        val name = when {
-            os.contains("linux") -> "linux"
-            os.contains("mac") -> "macos"
-            os.contains("windows") -> "windows"
-            else -> os.replace(' ', '-')
-        }
-        val arch = System.getProperty("os.arch").lowercase()
-        return "$name-" + when (arch) {
-            "amd64", "x86_64" -> "x86_64"
-            "aarch64", "arm64" -> "aarch64"
-            else -> arch
-        }
-    }
+    private fun resolveLibrary(): String =
+        JvmNativeLoader.resolve("prismdecode", "PRISM_MOTION_DECODE_LIB")
 }

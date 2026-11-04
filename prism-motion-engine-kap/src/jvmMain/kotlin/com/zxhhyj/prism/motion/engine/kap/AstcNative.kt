@@ -5,7 +5,7 @@ import com.sun.jna.Memory
 import com.sun.jna.Native
 import com.sun.jna.Pointer
 import com.sun.jna.Structure
-import java.io.File
+import com.zxhhyj.prism.motion.utils.JvmNativeLoader
 
 /**
  * 通过 JNA 直接调用 astcenc 的 C 接口（`libastcenc.so`），比逐帧起子进程快得多，
@@ -101,30 +101,6 @@ internal object AstcNative {
         }
     }
 
-    private fun resolveLibrary(): String {
-        System.getenv("PRISM_MOTION_ASTC_LIB")?.takeIf { it.isNotBlank() }?.let { return it }
-        val name = System.mapLibraryName("astcenc")
-        val cached = File(System.getProperty("user.home"), ".cache/prism-motion/native/$name")
-        if (cached.isFile) return cached.absolutePath
-        val local = File("thirdparty/native/${platform()}/$name")
-        if (local.isFile) return local.absolutePath
-        return "astcenc"
-    }
-
-    private fun platform(): String {
-        val os = System.getProperty("os.name").lowercase()
-        val name = when {
-            os.contains("linux") -> "linux"
-            os.contains("mac") -> "macos"
-            os.contains("windows") -> "windows"
-            else -> os.replace(' ', '-')
-        }
-        val arch = System.getProperty("os.arch").lowercase()
-        val archName = when (arch) {
-            "amd64", "x86_64" -> "x86_64"
-            "aarch64", "arm64" -> "aarch64"
-            else -> arch
-        }
-        return "$name-$archName"
-    }
+    private fun resolveLibrary(): String =
+        JvmNativeLoader.resolve("astcenc", "PRISM_MOTION_ASTC_LIB")
 }

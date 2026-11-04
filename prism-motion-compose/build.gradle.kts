@@ -18,6 +18,7 @@ kotlin {
             api(projects.prismMotionCore)
             api(compose.runtime)
             api(compose.ui)
+            api(compose.foundation)
             implementation(libs.kotlinx.coroutines.core)
         }
     }

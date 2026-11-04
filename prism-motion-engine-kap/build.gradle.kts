@@ -23,6 +23,7 @@ kotlin {
             api(libs.kap.compose)
         }
         jvmMain.dependencies {
+            implementation(projects.utilsJvm)
             implementation(libs.jna)
         }
         jvmTest.dependencies {
