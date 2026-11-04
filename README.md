@@ -80,6 +80,9 @@ prism-motion.kexe pack vap --frames frames/ --out out.mp4 --fps 30
 `build.gradle.kts` 把所有插件声明一次并 `apply false`：AGP 模块和 K/N 目标必须在同一套
 插件 classloader 下解析，否则 K/N 的 build service 会在兄弟项目间冲突（同 `mandysa` 的做法）。
 
+文件系统统一走 [kotlinx-io](https://github.com/Kotlin/kotlinx-io)（`0.9.2`），
+Linux / Windows / macOS 共用一份读写实现；只有进程、环境变量、权限这些系统调用保留平台 actual。
+
 链接完成后 `embedTools` 任务把 `thirdparty/tools/<platform>/astcenc` 追加到可执行文件末尾
 （`PMTOOLS1` payload），运行时首次使用解压到 `~/.cache/prism-motion/tools/`。
 

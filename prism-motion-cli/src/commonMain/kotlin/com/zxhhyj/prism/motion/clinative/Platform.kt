@@ -1,24 +1,67 @@
 package com.zxhhyj.prism.motion.clinative
 
-/** 平台文件 / 进程能力；posix 与 Windows 各有一份 actual。 */
-internal expect object Platform {
-    fun exists(path: String): Boolean
-    fun isDirectory(path: String): Boolean
-    fun mkdirs(path: String)
-    fun readFile(path: String): ByteArray
-    fun writeFile(path: String, bytes: ByteArray)
-    fun listDirectory(path: String): List<String>
+import kotlinx.io.buffered
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
+import kotlinx.io.readByteArray
+
+/**
+ * 文件系统统一走 kotlinx-io，各平台共用一份实现；
+ * 只有进程、环境变量、权限这些系统调用留在 [Sys] 的平台 actual 里。
+ */
+internal object Platform {
+
+    fun exists(path: String): Boolean = SystemFileSystem.exists(Path(path))
+
+    fun isDirectory(path: String): Boolean =
+        SystemFileSystem.metadataOrNull(Path(path))?.isDirectory == true
+
+    fun mkdirs(path: String) {
+        SystemFileSystem.createDirectories(Path(path))
+    }
+
+    fun readFile(path: String): ByteArray =
+        SystemFileSystem.source(Path(path)).use { it.buffered().readByteArray() }
+
+    fun writeFile(path: String, bytes: ByteArray) {
+        // 必须关闭 buffered 包装，否则数据留在缓冲区里。
+        SystemFileSystem.sink(Path(path)).buffered().use { it.write(bytes) }
+    }
+
+    fun listDirectory(path: String): List<String> =
+        SystemFileSystem.list(Path(path)).map { it.name }.sorted()
+
+    fun removeRecursively(path: String) {
+        val target = Path(path)
+        if (!SystemFileSystem.exists(target)) return
+        if (SystemFileSystem.metadataOrNull(target)?.isDirectory == true) {
+            for (child in SystemFileSystem.list(target)) removeRecursively(child.toString())
+        }
+        SystemFileSystem.delete(target, mustExist = false)
+    }
+
+    fun makeTempDir(prefix: String): String = Sys.makeTempDir(prefix)
+
+    fun chmodExecutable(path: String) = Sys.chmodExecutable(path)
+
+    fun selfExecutable(): String? = selfExecutablePath()
+
+    fun runProcess(argv: List<String>): Int = Sys.runProcess(argv)
+
+    fun env(name: String): String? = Sys.env(name)
+
+    val executableSuffix: String get() = Sys.executableSuffix
+
+    val pathSeparator: Char get() = Sys.pathSeparator
+}
+
+/** 平台相关的系统调用：posix 与 Windows 各一套。 */
+internal expect object Sys {
     fun makeTempDir(prefix: String): String
     fun chmodExecutable(path: String)
-    fun removeRecursively(path: String)
-    fun selfExecutable(): String?
     fun runProcess(argv: List<String>): Int
     fun env(name: String): String?
-
-    /** 可执行文件后缀：posix 为空，Windows 为 ".exe"。 */
     val executableSuffix: String
-
-    /** PATH 分隔符：posix 为 ':'，Windows 为 ';'。 */
     val pathSeparator: Char
 }
 
