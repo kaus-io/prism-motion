@@ -159,7 +159,7 @@ tasks.configureEach {
             if (missing.isNotEmpty()) {
                 throw GradleException(
                     "缺少第三方库：\n" + missing.joinToString("\n") { "  - $it" } +
-                        "\n先运行 ./thirdparty/build-thirdparty.sh $hostToolPlatform（需要 cc 与 nasm）",
+                        "\n先运行 ./scripts/build-thirdparty.sh $hostToolPlatform（需要 cc 与 nasm）",
                 )
             }
         }

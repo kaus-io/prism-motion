@@ -38,6 +38,8 @@ include(
     ":prism-motion-engine-kap",
     ":prism-motion-engine-vap",
     ":prism-motion-probe",
+    ":bench-android",
+    ":bench-jvm",
     ":demo-android",
     ":demo-desktop",
     ":prism-motion-cli",

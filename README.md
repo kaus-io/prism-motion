@@ -165,8 +165,8 @@ git submodule update --init --recursive
 构建前先编译成静态库（产物不入库）：
 
 ```bash
-./thirdparty/build-thirdparty.sh linux-x86_64   # 需要 cc 与 nasm
-# 没有系统 nasm 时：NASM_DIR=/path/to/nasm ./thirdparty/build-thirdparty.sh linux-x86_64
+./scripts/build-thirdparty.sh linux-x86_64   # 需要 cc 与 nasm
+# 没有系统 nasm 时：NASM_DIR=/path/to/nasm ./scripts/build-thirdparty.sh linux-x86_64
 ```
 
 脚本只读 submodule、不联网，生成 `libstb.a`、`libopenh264.a`、`libprismcodec.a` 到
@@ -181,7 +181,7 @@ git submodule update --init --recursive
 - `compose`、`engine-vap`、`engine-kap` 都已同时支持 Android 和 JVM（Compose Multiplatform）。
 - **JVM 侧不再依赖 FFmpeg**：`engine-vap` 自带 MP4 解封装（`VapMp4`），解码用
   OpenH264 经 JNA 调 `libprismdecode.so`；`engine-kap` 解码用 `libastcenc.so`。两者都是
-  `thirdparty/build-thirdparty.sh` 编出来的原生库。
+  `scripts/build-thirdparty.sh` 编出来的原生库。
 - Windows 产物只做了交叉编译验证，没有真机 / wine 运行；且缺少 stb_image / OpenH264 的 mingw 交叉编译，
   因此 PNG 解码与 H.264 编码在 Windows 上会明确报错（其它命令正常）。
 - macOS 目标只能在 macOS 主机上构建。

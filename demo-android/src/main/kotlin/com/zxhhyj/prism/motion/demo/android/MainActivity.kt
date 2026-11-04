@@ -1,6 +1,5 @@
 package com.zxhhyj.prism.motion.demo.android
 
-import android.app.ActivityManager
 import android.content.Context
 import android.os.Bundle
 import android.os.Debug
@@ -50,13 +49,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val bench = intent.getBooleanExtra("bench", false)
-        val only = intent.getStringExtra("only")
-        setContent {
-            MaterialTheme {
-                if (bench) BenchScreen(applicationContext, only) else DemoApp(applicationContext)
-            }
-        }
+        setContent { MaterialTheme { DemoApp(applicationContext) } }
     }
 }
 
@@ -103,7 +96,7 @@ fun DemoApp(context: Context) {
     }
     LaunchedEffect(Unit) {
         while (true) {
-            pss = Memory.pssMb(context)
+            pss = Memory.pssMb()
             kotlinx.coroutines.delay(500)
         }
     }
@@ -134,79 +127,11 @@ fun DemoApp(context: Context) {
     }
 }
 
-/** 自动基准：逐个场景播放，把帧间隔与 PSS 写到外部文件目录。 / Bench mode writing CSV to the app's files dir. */
-@Composable
-fun BenchScreen(context: Context, only: String?) {
-    val assets = remember(only) { listAssets(context).filter { only == null || it.startsWith(only) } }
-    val counts = remember { listOf(1, 8, 16) }
-    val scenarios = remember(assets) { assets.flatMap { a -> counts.map { a to it } } }
-    var index by remember { mutableStateOf(0) }
-    var done by remember { mutableStateOf(false) }
-    val registry = rememberDemoRegistry(context)
-
-    if (done) {
-        LaunchedEffect(Unit) { android.util.Log.i("prism-bench", "BENCH_DONE " + File(context.getExternalFilesDir(null), "bench.csv")) }
-        Text("bench 完成：${context.getExternalFilesDir(null)}/bench.csv")
-        return
-    }
-
-    val (asset, count) = scenarios[index]
-    val samples = remember(index) { ArrayList<Long>() }
-    var pssMax by remember(index) { mutableStateOf(0L) }
-
-    LaunchedEffect(index) {
-        val start = System.nanoTime()
-        var last = 0L
-        while (true) {
-            withFrameNanos { now ->
-                if (last != 0L && (now - start) / 1_000_000 > 2_000) samples.add((now - last) / 1_000)
-                last = now
-            }
-            pssMax = maxOf(pssMax, Memory.pssMb(context))
-            if ((System.nanoTime() - start) / 1_000_000 > 8_000) break
-        }
-        val sorted = samples.sorted()
-        val avg = if (sorted.isEmpty()) 0.0 else sorted.average() / 1000.0
-        val p95 = if (sorted.isEmpty()) 0.0 else sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.size - 1)] / 1000.0
-        appendCsv(context, "$asset,$count,${sorted.size},$avg,$p95,${Memory.pssMb(context)},$pssMax")
-        if (index + 1 < scenarios.size) index++ else done = true
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        Text("bench ${index + 1}/${scenarios.size}: $asset × $count", fontSize = 11.sp, modifier = Modifier.padding(8.dp))
-        LazyVerticalGrid(columns = GridCells.Adaptive(120.dp), modifier = Modifier.fillMaxSize()) {
-            items(count) { item ->
-                key(item) {
-                    val state = rememberPrismMotionState(
-                        remember(index, item) { PrismMotionRequest(PrismMotionSource.Asset(asset)) },
-                        registry,
-                    )
-                    PrismMotion(state, modifier = Modifier.fillMaxWidth().padding(2.dp), contentScale = ContentScale.Fit)
-                }
-            }
-        }
-    }
-}
-
-fun appendCsv(context: Context, row: String) {
-    val dir = context.getExternalFilesDir(null) ?: context.filesDir
-    val file = File(dir, "bench.csv")
-    if (!file.exists()) file.writeText("asset,count,frames,avg_frame_ms,p95_frame_ms,pss_mb,pss_max_mb\n")
-    file.appendText(row + "\n")
-}
-
 /** PSS 采样：Debug.MemoryInfo 的 totalPss。 / Samples PSS via Debug.MemoryInfo. */
 object Memory {
-    fun pssMb(context: Context): Long {
+    fun pssMb(): Long {
         val info = Debug.MemoryInfo()
         Debug.getMemoryInfo(info)
         return info.totalPss / 1024L
-    }
-
-    fun availMb(context: Context): Long {
-        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val info = ActivityManager.MemoryInfo()
-        manager.getMemoryInfo(info)
-        return info.availMem / (1024 * 1024)
     }
 }

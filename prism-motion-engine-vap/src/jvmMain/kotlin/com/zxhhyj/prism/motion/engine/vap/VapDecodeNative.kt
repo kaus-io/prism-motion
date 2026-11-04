@@ -26,7 +26,7 @@ internal object VapDecodeNative {
 
     /** 解码一组 Annex-B 采样，返回紧凑 I420 帧列表。 / Decodes Annex-B samples into tight I420 frames. */
     fun decodeAll(samples: List<ByteArray>, width: Int, height: Int): List<ByteArray> {
-        val library = lib ?: error("缺少 libprismdecode（先跑 thirdparty/build-thirdparty.sh）")
+        val library = lib ?: error("缺少 libprismdecode（先跑 scripts/build-thirdparty.sh）")
         val decoder = library.prism_dec_create() ?: error("OpenH264 解码器初始化失败")
         try {
             val capacity = width * height * 3 / 2

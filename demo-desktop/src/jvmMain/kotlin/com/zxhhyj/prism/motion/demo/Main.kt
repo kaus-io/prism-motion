@@ -50,11 +50,19 @@ fun demoRegistry(): PrismMotionRegistry = PrismMotionRegistry(
     ),
 )
 
-fun main(args: Array<String>) {
-    if (args.contains("--bench")) {
-        Bench.run(args)
-        return
+/** 演示资产：目录下的 mp4/ktx 文件。 / Demo assets: mp4/ktx files in the directory. */
+fun demoAssets(): List<java.io.File> {
+    val dir = run {
+        System.getProperty("prism.demo.data")?.let { return@run java.io.File(it) }
+        val local = java.io.File("demo-data")
+        if (local.isDirectory) local else java.io.File("../demo-data")
     }
+    return dir.listFiles { file -> file.isFile && (file.name.endsWith(".mp4") || file.name.endsWith(".ktx")) }
+        .orEmpty()
+        .sortedBy { it.name }
+}
+
+fun main(args: Array<String>) {
     application {
         Window(onCloseRequest = ::exitApplication, title = "prism-motion demo") {
             MaterialTheme { DemoApp() }
@@ -65,7 +73,7 @@ fun main(args: Array<String>) {
 @Composable
 fun DemoApp() {
     val registry = remember { demoRegistry() }
-    val assets = remember { discoverAssets() }
+    val assets = remember { demoAssets() }
     var assetIndex by remember { mutableStateOf(0) }
     val asset = assets.getOrNull(assetIndex)
     var count by remember { mutableStateOf(4) }
@@ -93,13 +101,13 @@ fun DemoApp() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Button(onClick = { assetIndex = (assetIndex - 1 + assets.size) % assets.size }) { Text("◀", fontSize = 12.sp) }
-            Text(asset?.label ?: "没有资产", fontSize = 12.sp)
+            Text(asset?.name ?: "没有资产", fontSize = 12.sp)
             Button(onClick = { assetIndex = (assetIndex + 1) % assets.size }) { Text("▶", fontSize = 12.sp) }
             Button(onClick = { count = (count / 2).coerceAtLeast(1) }) { Text("− 数量", fontSize = 12.sp) }
             Text("×$count", fontSize = 12.sp)
             Button(onClick = { count = (count * 2).coerceAtMost(64) }) { Text("+ 数量", fontSize = 12.sp) }
             Text(
-                "fps ${"%.1f".format(fps)}   RSS ${Memory.rssMb()} MB   heap ${Memory.heapMb()} MB",
+                "fps ${"%.1f".format(fps)}",
                 fontSize = 12.sp,
             )
         }
@@ -110,10 +118,9 @@ fun DemoApp() {
         ) {
             items(count) { index ->
                 key(index) {
-                    val file = asset?.file
                     val state = rememberPrismMotionState(
                         remember(asset, index) {
-                            PrismMotionRequest(PrismMotionSource.File(file?.absolutePath.orEmpty()))
+                            PrismMotionRequest(PrismMotionSource.File(asset?.absolutePath.orEmpty()))
                         },
                         registry,
                     )

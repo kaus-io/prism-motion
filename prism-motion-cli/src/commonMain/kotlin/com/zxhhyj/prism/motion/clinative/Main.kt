@@ -19,6 +19,7 @@ internal object Cli {
 
     private val VALUE_OPTIONS = setOf(
         "frames", "out", "fps", "alpha", "scale", "ffmpeg", "format", "astcenc", "loop", "premultiply",
+        "bitrate",
     )
 
     private val USAGE = """

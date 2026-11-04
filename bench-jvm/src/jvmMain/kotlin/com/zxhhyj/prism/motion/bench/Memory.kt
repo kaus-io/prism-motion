@@ -1,4 +1,4 @@
-package com.zxhhyj.prism.motion.demo
+package com.zxhhyj.prism.motion.bench
 
 import java.io.File
 

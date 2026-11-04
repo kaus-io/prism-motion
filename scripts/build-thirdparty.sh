@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 构建 CLI 依赖的第三方 C 库：stb_image（PNG 解码）与 OpenH264（H.264 编码）。
-# 用法：./thirdparty/build-thirdparty.sh [linux-x86_64]
+# 用法：./scripts/build-thirdparty.sh [linux-x86_64]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
