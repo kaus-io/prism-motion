@@ -51,9 +51,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val bench = intent.getBooleanExtra("bench", false)
+        val only = intent.getStringExtra("only")
         setContent {
             MaterialTheme {
-                if (bench) BenchScreen(applicationContext) else DemoApp(applicationContext)
+                if (bench) BenchScreen(applicationContext, only) else DemoApp(applicationContext)
             }
         }
     }
@@ -135,8 +136,8 @@ fun DemoApp(context: Context) {
 
 /** 自动基准：逐个场景播放，把帧间隔与 PSS 写到外部文件目录。 / Bench mode writing CSV to the app's files dir. */
 @Composable
-fun BenchScreen(context: Context) {
-    val assets = remember { listAssets(context) }
+fun BenchScreen(context: Context, only: String?) {
+    val assets = remember(only) { listAssets(context).filter { only == null || it.startsWith(only) } }
     val counts = remember { listOf(1, 8, 16) }
     val scenarios = remember(assets) { assets.flatMap { a -> counts.map { a to it } } }
     var index by remember { mutableStateOf(0) }
