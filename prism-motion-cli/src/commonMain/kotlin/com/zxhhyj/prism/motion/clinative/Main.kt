@@ -9,7 +9,7 @@ internal const val EXIT_VALIDATION: Int = 1
 internal const val EXIT_USAGE: Int = 2
 internal const val EXIT_RUNTIME: Int = 3
 
-internal const val VERSION: String = "1.0.0"
+internal const val VERSION: String = PrismMotionVersion.VERSION
 
 fun main(args: Array<String>) {
     exitProcess(Cli.run(args.toList()))

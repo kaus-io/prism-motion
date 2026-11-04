@@ -34,7 +34,7 @@
 
 ## 演示与基准
 
-Demo 只负责交互，基准是独立应用。
+Demo 只负责交互，基准是独立应用。临时报告与原始性能数据保存在项目外；对外比较使用明确的 1× 基准，不展示具体测试配置。
 
 ```bash
 ./gradlew :demo-desktop:generateDemoAssets -PdemoSizes=128,256 -PdemoFrames=24 -PdemoBitrates=150,1500
@@ -42,18 +42,18 @@ Demo 只负责交互，基准是独立应用。
 ./gradlew :demo-android:installDebug
 
 ./gradlew :bench-jvm:run --args="--size 256"
-ASSETS='alpha-256-astc8x8 alpha-256-rgba8 alpha-256-b1500' \
-  ./scripts/run-android-bench.sh <adb-serial> --counts 0,1,8,16 --measure-ms 2500
+ASSETS='<private asset set>' ./scripts/run-android-bench.sh <adb-serial> \
+  --variant benchmark --counts '<private loads>' --isolate-scenarios --repeats 3 --allow-invalid
+python3 scripts/analyze-android-bench.py \
+  --input <private-raw.csv> --output-dir <public-directory-outside-project>
 ```
 
-Android 的汇总和采样时序分别保存到 [bench.csv](<bench-android/build/reports/bench.csv>) 和 [bench-samples.csv](<bench-android/build/reports/bench-samples.csv>)。
-计数 0 是采样器基线。每个资产单独启动进程；同一资产内的后续场景为进程内热启动。
-加载失败、没有输出、实例不推进或固定像素网格超出屏幕均记为 `valid=false`，脚本最终返回非零。
-`submitted_fps` 是每实例成功提交帧率，`ui_fps` / `ui_*` 是 UI 时钟稳定性，不能混为一谈。
-PSS 在后台 4Hz 采样，CPU 的 100% 表示占满一个逻辑核；测量窗口不包含加载和预热。
-`first_output_ms` 是所有实例具备引擎可显示内容的最晚观察时间，**不是物理屏幕扫描时刻**。
-KAP 提交计数有约 100ms 的发布粒度，短测量窗口会有边界误差；结果含采样器自身开销，未扣除基线。
-桌面工具仍属于探索性测量；其 RSS、UI 时钟和加载就绪时间不等同 Android 的 PSS、提交帧率和显示内容观察。
+产品版本与独立 bench 协议版本由 [gradle.properties](<gradle.properties>) 管理，从 `alpha01` 开始。
+Android/CLI 产物使用同一产品版本；bench 界面、每条原始记录和 manifest 同时保留产品/协议版本。
+运行器校验安装包内烘焙的版本、APK 与素材指纹，拒绝把旧 APK 或不同协议的数据冒充当前版本。
+原始数据默认保存到项目外的版本化私有目录；公开输出只有中文倍率图，固定 KAP 为 1× 基准，不导出具体配置或临时 Markdown 报告。
+`benchmark` 是非 debuggable 专用构建。进程隔离、逐帧回调校验和 CPU/PSS 分阶段测量用于避免回归误判；场景失败会保留，采集/崩溃/版本错误不会被 `--allow-invalid` 吞掉。
+公开图中的倍率是同场景相对开销，不是综合跑分或等画质效率；呈现回调也不等同物理屏幕扫描。
 
 资产目录默认是模块相对路径 `../demo-data`，Gradle 可用 `-PdemoAssets=<dir>` 覆盖；运行脚本时可设置 `DEMO_ASSETS`。
 资产命名：`{alpha|opaque}-{size}-{quality}.{mp4|ktx}`；`ASSETS` 使用不带后缀的精确名称。

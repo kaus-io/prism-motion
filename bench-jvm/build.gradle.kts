@@ -25,6 +25,10 @@ compose.desktop {
     application {
         mainClass = "com.zxhhyj.prism.motion.bench.MainKt"
         jvmArgs += listOf("-Xmx3g")
-        nativeDistributions { targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb) }
+        nativeDistributions {
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            // 安装器要求纯数字版本，产品仍使用 alpha 编号。 / Installers require numeric versions; the product retains alpha numbering.
+            packageVersion = "1.0.${rootProject.extra["prismVersionCode"]}"
+        }
     }
 }

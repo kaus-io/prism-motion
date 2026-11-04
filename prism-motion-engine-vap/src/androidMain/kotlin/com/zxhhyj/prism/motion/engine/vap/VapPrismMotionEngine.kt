@@ -19,6 +19,8 @@ import com.zxhhyj.prism.motion.compose.PrismMotionState
 import com.zxhhyj.prism.motion.PrismMotionEngine
 import com.zxhhyj.prism.motion.PrismMotionEngineId
 import com.zxhhyj.prism.motion.PrismMotionResource
+import com.zxhhyj.prism.motion.PrismMotionFrameObservable
+import com.zxhhyj.prism.motion.PrismMotionFrameObserver
 import com.zxhhyj.prism.motion.PrismMotionSource
 import com.zxhhyj.vap.player.VapAnimation
 import com.zxhhyj.vap.player.VapAnimationState
@@ -70,7 +72,16 @@ public class PrismMotionVapEngine : PrismMotionEngine {
     }
 }
 
-private class VapAnimationResource(val composition: VapComposition) : PrismMotionResource {
+private class VapAnimationResource(val composition: VapComposition) : PrismMotionResource, PrismMotionFrameObservable {
+    @Volatile private var frameObserver: PrismMotionFrameObserver? = null
+
+    override fun setFrameObserver(observer: PrismMotionFrameObserver?) {
+        frameObserver = observer
+    }
+
+    fun onPresented() {
+        frameObserver?.onFramePresented(System.nanoTime())
+    }
     /** 播放开关提升为 Compose 状态，交给 VAP 自己的暖待机切换。 */
     var playing by mutableStateOf(false)
     var released by mutableStateOf(false)
@@ -124,6 +135,7 @@ private class VapAnimationResource(val composition: VapComposition) : PrismMotio
 
     override fun release() {
         if (released) return
+        frameObserver = null
         playing = false
         released = true
         player = null
@@ -143,6 +155,7 @@ public object PrismMotionVapRenderer : PrismMotionRenderer {
             // 上游未设置错误监听时会重新抛出；门面必须收敛为失败状态。
             // Without an error listener upstream rethrows; the facade must retain a failure state.
             onError = resource::onFailure,
+            onPresented = resource::onPresented,
         )
         SideEffect { resource.player = player }
         // 从组合移除后由上游异步关闭 MediaCodec/Vulkan，不在主线程重复销毁。

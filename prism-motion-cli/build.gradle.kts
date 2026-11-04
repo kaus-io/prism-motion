@@ -4,6 +4,29 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
 
+val cliVersion = project.version.toString()
+val versionSourceDirectory = layout.buildDirectory.dir("generated/prismVersion/kotlin")
+val generateCliVersion by tasks.registering {
+    inputs.property("version", cliVersion)
+    outputs.dir(versionSourceDirectory)
+    doLast {
+        val output = versionSourceDirectory.get()
+            .file("com/zxhhyj/prism/motion/clinative/PrismMotionVersion.kt").asFile
+        output.parentFile.mkdirs()
+        output.writeText(
+            """
+            package com.zxhhyj.prism.motion.clinative
+
+            /** 从 Gradle 项目版本生成，禁止手动维护。 / Generated from the Gradle project version; do not edit manually. */
+            internal object PrismMotionVersion {
+                const val VERSION: String = "$cliVersion"
+            }
+            """.trimIndent() + "\n",
+            Charsets.UTF_8,
+        )
+    }
+}
+
 val hostOs = System.getProperty("os.name").lowercase()
 val onMac = hostOs.contains("mac")
 
@@ -57,8 +80,15 @@ kotlin {
         }
     }
 
+    targets.configureEach {
+        compilations.configureEach {
+            compileTaskProvider.configure { dependsOn(generateCliVersion) }
+        }
+    }
+
     sourceSets {
         val commonMain by getting {
+            kotlin.srcDir(versionSourceDirectory)
             dependencies {
                 api(projects.prismMotionProbe)
                 api(projects.prismMotionFormat)

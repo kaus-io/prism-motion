@@ -9,6 +9,9 @@ import androidx.compose.ui.layout.ContentScale
 import com.zxhhyj.prism.motion.PrismMotionEngine
 import com.zxhhyj.prism.motion.PrismMotionEngineId
 import com.zxhhyj.prism.motion.PrismMotionResource
+import com.zxhhyj.prism.motion.PrismMotionFrameObservable
+import com.zxhhyj.prism.motion.PrismMotionFrameObserver
+import com.zxhhyj.kap.compose.KtxAnimationListener
 import com.zxhhyj.prism.motion.PrismMotionSource
 import com.zxhhyj.prism.motion.compose.PrismMotionRegistry
 import com.zxhhyj.prism.motion.compose.PrismMotionRenderer
@@ -75,7 +78,18 @@ public class PrismMotionKapEngine(
     }
 }
 
-private class KapAnimationResource(internal val player: KtxAnimationState) : PrismMotionResource {
+private class KapAnimationResource(internal val player: KtxAnimationState) : PrismMotionResource, PrismMotionFrameObservable {
+    @Volatile private var frameObserver: PrismMotionFrameObserver? = null
+    private val frameListener = object : KtxAnimationListener {
+        override fun onUpdate(progress: Float) {
+            frameObserver?.onFramePresented(System.nanoTime())
+        }
+    }
+
+    override fun setFrameObserver(observer: PrismMotionFrameObserver?) {
+        frameObserver = observer
+        player.listener = if (observer == null) null else frameListener
+    }
     override val width: Int get() = player.composition.width
     override val height: Int get() = player.composition.height
     override val durationMs: Long get() = player.durationMs
@@ -97,7 +111,10 @@ private class KapAnimationResource(internal val player: KtxAnimationState) : Pri
     override fun play() = player.play()
     override fun pause() = player.pause()
     override fun seekTo(progress: Float) = player.seekTo(progress)
-    override fun release() = player.release()
+    override fun release() {
+        setFrameObserver(null)
+        player.release()
+    }
 }
 
 /** 用 KAP 的统一渲染器；宿主仍是 [KtxAnimation] 的 TextureView。 */
