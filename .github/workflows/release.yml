@@ -29,11 +29,12 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: |
+            17
+            25
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
         with:
           gradle-version: '9.7.1'
@@ -50,6 +51,18 @@ jobs:
       - name: Validate release version
         id: version
         run: python3 -B scripts/release-version.py
+      - name: Install native and Android build prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes build-essential nasm ninja-build cmake gnupg
+          bash scripts/setup-release-android.sh
+          ./scripts/build-thirdparty.sh linux-x86_64
+      - name: Check release helpers and frozen sources
+        run: |
+          set -euo pipefail
+          PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts -p 'test_release*.py' -v
+          python3 -B thirdparty/prism-sdk/verify_snapshot.py
       - name: Prepare in-memory signing
         run: python3 -B scripts/prepare-release-signing.py
         env:
@@ -58,18 +71,6 @@ jobs:
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-      - name: Install native and Android build prerequisites
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes build-essential nasm ninja-build cmake gnupg
-          sdkmanager 'platforms;android-37' 'cmake;3.22.1'
-          ./scripts/build-thirdparty.sh linux-x86_64
-      - name: Check release helpers and frozen sources
-        run: |
-          set -euo pipefail
-          PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts -p 'test_release*.py' -v
-          python3 -B thirdparty/prism-sdk/verify_snapshot.py
       - name: Stage signed prerequisite packages
         run: |
           set -euo pipefail
