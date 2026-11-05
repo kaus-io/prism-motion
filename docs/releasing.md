@@ -1,79 +1,54 @@
-# CI 发布
+# 发布
 
-## 产物与版本
+## 职责
 
-软件版本唯一来源是 [gradle.properties](<../gradle.properties>) 的 `version`。发布标签为 `v<version>`，标签、CLI 横幅与 Maven 版本必须一致；预发布使用 `-alphaNN` / `-betaNN` / `-rcNN`，不复用已经对外发布的版本。
+- GitHub Release 由本人发布，标题只写清单版本号，说明中文在前、英文在后；不使用机器人账号。
+- 构建、测试、签名、打包和产物检查全部在本地或发布前完成。
+- [CI](<../.github/workflows/release.yml>) 只监听 `release: types: [published]`，只负责把现成制品发布到 Maven Central。推送分支或标签均不触发 CI，不另设手工补发或重建 Release 工作流。
+- CI 不创建、修改或删除 GitHub Release，不上传 CLI，不需要 GitHub 个人发布令牌，也不绑定具体用户名。
 
-当前工作流专用于 SDK 与 Prism 的首次同版本发布。后续版本必须改为消费已经公开的冻结 SDK 包，不能照搬首发流程重传同一 SDK 版本；发布器也不会假定 beta、rc 或正式版已被这次验证覆盖。
+## 版本与渠道
 
-首发包含：
+版本唯一来源为 [gradle.properties](<../gradle.properties>) 的 `version`，Release 标签为 `v<version>`。CLI 横幅、Maven 坐标和标签必须一致；已发布内容不覆盖、不删除、不重新赋予其它字节。
 
-- Linux x86_64 原生命令行：打包、探测、校验，内嵌 ASTC 工具。
-- Windows x86_64 原生命令行：探测、校验与内嵌工具；PNG/H.264 打包目前未接入。
-- Maven Central 的 `com.kaus-io` 库：Android、JVM，以及已声明的 Linux/Windows Kotlin/Native 目标。macOS 不在首发承诺内。
-- CLI 的许可证、第三方声明、公开验签密钥与 SHA-256 校验清单。CLI 以原生文件直接下载，不要求解压分发包。
+Maven 命名空间为 `com.kaus-io`。客户端使用 `mavenCentral()`，显式指定清单版本。
 
-客户端使用 `mavenCentral()`，并显式指定所需版本。例如：
+首次发布保留了 [KAP/VAP 源码快照](<../thirdparty/prism-sdk/PROVENANCE.json>)，包含 Region API 的可追溯来源。后续版本应消费已公开的冻结 SDK 包，不重复上传原 SDK 版本。当前打包器保留首发的坐标白名单；扩大版本或目标支持前，先在本地完成对应验证。
 
-```kotlin
-val prismMotionVersion: String by project
+Linux CLI 支持打包和检查；Windows CLI 目前只支持检查，不提供 macOS CLI。CLI 以原生文件分发，不要求下载压缩分发包。内部 JVM 装载器坐标为 `prism-motion-native-loader`，不使用旧的 `utils-jvm`。
 
-dependencies {
-    implementation("com.kaus-io:prism-motion-compose:$prismMotionVersion")
-    implementation("com.kaus-io:prism-motion-engine-kap:$prismMotionVersion")
-    implementation("com.kaus-io:prism-motion-engine-vap:$prismMotionVersion")
-}
-```
+## 发布前在本地完成
 
-内部 JVM 工具项目发布为 `prism-motion-native-loader`，不使用容易与 KMP 目标重名的 `utils-jvm`。JVM ASTC/H.264 软件解码仍需要已说明的本机原生库；Maven 依赖不等同于分发任意桌面平台的编解码动态库。
+1. 完成单测、源码快照检查、实际 CLI 调用、独立 Maven 消费者及适用的设备验证。
+2. 使用安全的本地签名环境生成所需 Maven 暂存文件，完成 [Maven 产物检查](<../scripts/verify-maven-publications.py>) 和[签名验证](<../scripts/verify-release-signatures.py>)。不把私钥写进仓库或发行文件。
+3. 使用[本地打包器](<../scripts/publish-central-bundle.py>) 生成签名制品的原始 Portal 传输包和 SHA-256 文件：
 
-## 发布凭据
+   ```bash
+   python3 -B scripts/publish-central-bundle.py bundle \
+     --repository "$SDK_STAGE" --repository "$PRISM_STAGE" \
+     --output "$RELEASE_STAGE/maven-central-bundle.zip"
+   ```
 
-[工作流](<../.github/workflows/release.yml>) 使用下列组织或仓库 Actions Secrets；组织 Secrets 必须允许本仓库访问：
+   暂存路径使用操作系统标准临时目录。Portal ZIP 只是 Maven 上传协议的载体，不是 CLI 下载分发格式；不要在 CI 中重新构建或重签。
+4. 如需生成 Release 展示文本，可在本地运行[说明准备器](<../scripts/prepare-github-release.py>)；它只校验现成的六个 CLI 文件并生成版本标题、双语说明，不访问远端。
+5. 本人选择已验证的标签，在 GitHub 网页上传 CLI 文件，并粘贴版本标题和双语说明。目标 Maven 版本尚未发布时，还须附上 `maven-central-bundle.zip` 和 `maven-central-bundle.zip.sha256`，然后发布 Release；预发布勾选 Pre-release。
 
-| Secret | 用途 |
-| --- | --- |
-| `MAVEN_CENTRAL_USERNAME` | Central Portal 发布令牌用户名 |
-| `MAVEN_CENTRAL_PASSWORD` | Central Portal 发布令牌密码 |
-| `GPG_KEY_CONTENTS` | 导出的 ASCII-armored 私钥；也支持其 base64 文本 |
-| `SIGNING_KEY_ID` | 签名密钥 ID / 指纹，构建时规范为 Gradle 支持的短 ID |
-| `SIGNING_PASSWORD` | 私钥口令 |
+修改现有 Release 作者不能直接编辑作者字段。需要本人在网页处理，保留原标签并使用已经备份的原始文件；CI 不提供删除或重建入口。
 
-账号须已验证 `com.kaus-io` 命名空间，签名公钥须能被 Central 验证。不要在聊天、仓库、命令行参数或日志中粘贴私钥和令牌。`NPM_TOKEN` 不参与该流程。
+## CI 的唯一发布步骤
 
-[签名准备器](<../scripts/prepare-release-signing.py>) 只在 Runner 的受保护环境文件中传递内存签名参数。暂存后还会在一次性密钥环中逐项[实际验签](<../scripts/verify-release-signatures.py>)，只导出公开密钥。Gradle 配置缓存关闭，不把签名输入保存进构建缓存。
+[事件发布器](<../scripts/publish-release-to-central.py>) 读取 Release 事件及根清单版本：
 
-## 可复现的依赖与门禁
+1. 探测 Maven Central 上该版本的核心坐标。确认已经存在时成功退出，不要求重新提供上传包，也不再次上传。
+2. 只有明确的 HTTP 404 视为未发布；认证、权限、网络、服务器响应或元数据校验错误照常失败。
+3. 新版本从当前 Release 下载已经签名的 Portal 包及 SHA-256 文件，核对原始字节后交给 [Central 上传器](<../scripts/publish-central-bundle.py>)。CI 只上传，不构建、打包或生成说明。
+4. 核对标签、checkout 和事件 SHA，一次上传后等待 Portal 确认 `PUBLISHED`。上传前再次确认版本已存在时，也按成功处理，不覆盖已有制品。
 
-KAP / VAP 的 Region 接口源码冻结在 [SDK 快照](<../thirdparty/prism-sdk/PROVENANCE.json>)。只复制与发布依赖闭包相关的模块，保留 MIT 与 Zstandard BSD 声明，不包含 Hanna 其它代码、未推送历史、构建产物或机器配置。
-
-1. [快照校验器](<../thirdparty/prism-sdk/verify_snapshot.py>) 检查来源清单、生产源码摘要与法律文件的唯一打包路径。
-2. Gradle 9.7.1 独立构建 SDK 快照的 3 个 KAP 模块与 7 个 VAP 模块，形成 20 个 Maven root/platform 坐标。
-3. Prism 使用自身 Gradle Wrapper 与隔离的 SDK Maven 包构建；`releaseStrictDependencies=true` 禁用本机 Maven。主项目不通过 `includeBuild` 或跨仓库 `project` 引用 SDK 源码。
-4. [Maven 校验器](<../scripts/verify-maven-publications.py>) 验证 39 个 Prism root/platform 坐标、POM、真实平台源码、元数据跳转、依赖版本、校验和与签名。
-5. CLI 在新缓存、独立进程中走[真实合成资源调用](<../scripts/smoke-cli-release.py>)：RGBA8、ASTC、VAP 打包/校验，拒绝旧输入与损坏资源。Windows Runner 再运行同一语料的读取和工具执行。
-6. 发布前本地单测、实际 CLI、独立 Maven 消费者和 Android 真机播放验证均须完成。CI 通过不能替代设备验证。
-
-SDK 与 Prism 暂存分开检查，之后合成同一个签名 Central deployment，避免先发布不完整的依赖链。Portal 所需 ZIP 仅是其上传协议载体，不是 CLI 下载分发格式。
-
-## 触发
-
-推送 `main` 或手动运行工作流会构建、测试、签名并保留 Actions 验证产物，但不会上传 Central，也不会创建 Release。
-
-本地与设备验证完成、对应提交的 CI 门禁通过后，给该提交创建与清单一致的 `v<version>` 标签并推送。标签运行才有发布权限：
-
-1. 再次完整构建与验证。
-2. [Central 上传器](<../scripts/publish-central-bundle.py>) 上传已校验的原始暂存字节，不重新构建；拒绝已经公开的同版本坐标。[来源校验器](<../scripts/verify-release-source.py>) 在远端写入与声明成功前核对标签剥离后的提交、checkout 与事件 SHA；标签缺失、移动或无法核实都会关闭发布门禁。
-3. 等待 Portal 状态确认为 `PUBLISHED`，不是只看到上传成功或 `VALIDATED`。
-4. 只有 Central 成功后，才创建 GitHub 预发布并上传已校验的 CLI 文件。不会将 alpha 设为最新正式版。
-
-尚未发布的版本构建失败时，在同一版本修正重试，不顺手涨号。移动或删除远端标签仍需要明确授权。
+CI 只读取已有的 `MAVEN_CENTRAL_USERNAME` 与 `MAVEN_CENTRAL_PASSWORD` Secrets。账号须有 `com.kaus-io` 权限；本地签名所需 GPG 配置不在 CI 中使用。不要在聊天、命令参数、仓库或日志中粘贴密钥和令牌。
 
 ## 失败与重试
 
-- 构建/签名/消费验证失败：不上传制品。修复后先重新通过本地和设备验证，再重跑 CI。
-- Central 上传后：`central-deployment-id` Artifact 保留部署 UUID，`central-bundle` 保留完全相同的已签名 ZIP 与 SHA-256。不要因超时盲目上传第二遍。
-- 选择 **Re-run failed jobs**：工作流必须恢复部署 UUID，才能以 status-only 模式继续等待；恢复失败则关闭发布门禁，不猜测是否上传过，也不重新上传。若之前尚未执行 Central 步骤而没有 UUID，需先确认 Portal 无待处理部署，再针对原标签手动发起新的工作流。不要选择重建全部任务来替代已上传的字节。
-- CLI 发行失败但 Central 已成功：库版本已经不可覆盖，只补同一提交的 GitHub 发行步骤。[GitHub 发行器](<../scripts/publish-github-prerelease.py>) 会逐字节核对已经上传的文件，只补 draft 中缺少的文件，不使用覆盖上传；已公开且完整一致的发行视为成功。若有不一致的 draft 或空标签，应明确记录其名称与指向，再按授权清理，不声称发布完成。
-
-Actions 验证产物保留 14 天。设备中转 CSV 在完整验证并回传成功后清理，正式的版本化回归数据继续保留原始测量标签，不因发行版本调整而重标。
+- 同版本重复发布只有“目标版本明确已经存在”可以成功跳过；其它失败不能吞掉，不使用 `|| true` 或 `continue-on-error`。
+- 上传结果不明确或 Portal 仍在处理时，先检查 Portal 中的部署状态和记录的部署 UUID，不盲目上传第二份。
+- 已成功发布的版本不因修改 Release 标题、说明或作者而再次生成 Maven 内容。
+- 历史标签包含其当时的工作流；本地重写不改变现有线上 Release、标签或已发布制品，也不通过移动标签来更新历史工作流。

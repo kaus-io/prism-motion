@@ -46,7 +46,7 @@ def environment() -> dict[str, str]:
         "MAVEN_CENTRAL_PASSWORD": "synthetic-central-password",
         "GITHUB_REPOSITORY": "kaus-io/prism-motion",
         "GITHUB_REF": f"refs/tags/v{VERSION}", "GITHUB_REF_TYPE": "tag",
-        "GITHUB_EVENT_NAME": "push", "GITHUB_SHA": "a" * 40,
+        "GITHUB_EVENT_NAME": "release", "GITHUB_SHA": "a" * 40,
     }
 
 
@@ -77,6 +77,10 @@ class TemporaryTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.env = environment()
+        self.event = self.root / "release-event.json"
+        self.event.write_text(json.dumps({"action": "published", "release": {"tag_name": "v" + VERSION, "draft": False},
+                                         "repository": {"full_name": "kaus-io/prism-motion"}}), encoding="utf-8")
+        self.env["GITHUB_EVENT_PATH"] = str(self.event)
 
     def run_script(self, filename: str, *arguments: str):
         """子进程仅接收显式合成环境。 / Subprocesses receive only an explicit synthetic environment."""
@@ -123,7 +127,7 @@ class SigningTest(TemporaryTest):
         self.assertIn("ORG_GRADLE_PROJECT_mavenCentralUsername<<", text)
         self.assertIn("ORG_GRADLE_PROJECT_mavenCentralPassword<<", text)
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
-        self.assertEqual({item.name for item in self.root.iterdir()}, {"runner-env"})
+        self.assertEqual({item.name for item in self.root.iterdir()}, {"runner-env", "release-event.json"})
 
     def test_mask_commands_escape_control_sequences(self):
         output = io.StringIO()
@@ -318,6 +322,18 @@ class BundleTest(TemporaryTest):
         with self.assertRaises(publisher.ReleaseError):
             publisher.bundle([self.repository], self.repository / "bad.zip", VERSION)
 
+    def test_manifest_accepts_zero_or_one_newline_and_rejects_other_whitespace(self):
+        manifest = self.create()
+        line = f"{publisher.file_digest(self.output)}  {self.output.name}".encode("ascii")
+        for value in (line, line + b"\n"):
+            manifest.write_bytes(value)
+            with self.output.open("rb") as stream:
+                self.assertTrue(publisher.verify_bundle(stream, self.output.name, manifest, VERSION))
+        for value in (line + b"\n\n", line + b"\r\n", b" " + line, line + b" ", line.replace(b"  ", b" ", 1)):
+            manifest.write_bytes(value)
+            with self.output.open("rb") as stream, self.assertRaises(publisher.ReleaseError):
+                publisher.verify_bundle(stream, self.output.name, manifest, VERSION)
+
     def test_manifest_tampering_and_zip_symlink_rejected(self):
         manifest = self.create()
         with self.output.open("ab") as stream:
@@ -341,17 +357,19 @@ class BundleTest(TemporaryTest):
         self.env["GITHUB_REF"] = "refs/heads/main"
         result = self.run_script("publish-central-bundle.py", "publish", "--bundle", str(self.output))
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("exact root-version tag", result.stderr)
+        self.assertIn("exact root-version Release", result.stderr)
         self.assertNotIn(self.env["MAVEN_CENTRAL_PASSWORD"], result.stderr)
 
 
 class FakePortal:
     """无网络的 Portal 响应队列。 / A network-free queue of Portal responses."""
 
-    def __init__(self, states=("PUBLISHED",), preflight=404, upload=201):
+    def __init__(self, states=("PUBLISHED",), preflight=404, upload=201, existing_code=200, existing_pom=None):
         self.states = iter(states)
         self.preflight = preflight
         self.upload = upload
+        self.existing_code = existing_code
+        self.existing_pom = existing_pom
         self.calls = []
         self.payload = b""
 
@@ -360,6 +378,13 @@ class FakePortal:
         self.calls.append((method, url, kwargs))
         if method == "HEAD":
             return self.preflight, b""
+        if method == "GET":
+            artifact, version = url.split("/")[-3:-1]
+            pom = self.existing_pom
+            if pom is None:
+                pom = (f'<project xmlns="http://maven.apache.org/POM/4.0.0"><groupId>com.kaus-io</groupId>'
+                       f'<artifactId>{artifact}</artifactId><version>{version}</version></project>').encode()
+            return self.existing_code, pom
         if "/upload?" in url:
             self.payload = b"".join(data)
             self.headers = kwargs["headers"]
@@ -454,6 +479,45 @@ class PublishTest(TemporaryTest):
         with mock.patch.object(publisher, "PortalClient", return_value=client), contextlib.redirect_stdout(io.StringIO()):
             return publisher.publish(self.bundle, self.manifest, VERSION, self.env, self.identifier, **kwargs)
 
+    def test_version_uses_release_tag_manifest_not_newer_tooling_checkout(self):
+        tooling = self.root / "tooling"
+        (tooling / "scripts").mkdir(parents=True)
+        (tooling / "gradle.properties").write_text("version=1.0.0-alpha02\n")
+        source = self.root / "tag-source"
+        source.mkdir()
+        (source / "gradle.properties").write_text("version=" + VERSION + "\n")
+        with mock.patch.object(publisher, "__file__", str(tooling / "scripts/publish-central-bundle.py")):
+            with mock.patch.dict(os.environ, {"RELEASE_SOURCE_DIRECTORY": str(source)}, clear=True):
+                self.assertEqual(publisher.project_version(), VERSION)
+                self.assertEqual(publisher.release_version(VERSION), VERSION)
+                with self.assertRaises(publisher.ReleaseError):
+                    publisher.release_version("1.0.0-alpha02")
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(publisher.project_version(), "1.0.0-alpha02")
+            with mock.patch.dict(os.environ, {"RELEASE_SOURCE_DIRECTORY": str(tooling)}, clear=True):
+                self.assertEqual(publisher.project_version(source_directory=source), VERSION)
+                self.assertEqual(publisher.release_version(None, source_directory=str(source)), VERSION)
+        self.assertEqual((source / "gradle.properties").read_text(), "version=" + VERSION + "\n")
+        self.assertEqual((tooling / "gradle.properties").read_text(), "version=1.0.0-alpha02\n")
+
+    def test_release_source_directory_and_manifest_symlinks_are_rejected(self):
+        source = self.root / "tag-source"
+        source.mkdir()
+        manifest = source / "gradle.properties"
+        manifest.write_text("version=" + VERSION + "\n")
+        link = self.root / "source-link"
+        link.symlink_to(source, target_is_directory=True)
+        for directory in (link, self.root / "missing-source", manifest, ""):
+            with mock.patch.dict(os.environ, {"RELEASE_SOURCE_DIRECTORY": str(directory)}, clear=True):
+                with self.assertRaises(publisher.ReleaseError):
+                    publisher.project_version()
+        linked = self.root / "linked-manifest-source"
+        linked.mkdir()
+        (linked / "gradle.properties").symlink_to(manifest)
+        with mock.patch.dict(os.environ, {"RELEASE_SOURCE_DIRECTORY": str(linked)}, clear=True):
+            with self.assertRaises(publisher.ReleaseError):
+                publisher.project_version()
+
     def test_production_guards_and_root_version(self):
         self.assertEqual(publisher.release_version(VERSION), VERSION)
         with self.assertRaises(publisher.ReleaseError):
@@ -463,6 +527,22 @@ class PublishTest(TemporaryTest):
                              ("GITHUB_EVENT_NAME", "pull_request_target"), ("GITHUB_HEAD_REF", "feature")):
             with self.subTest(field=field, value=value), self.assertRaises(publisher.ReleaseError):
                 publisher.production_guard({**self.env, field: value}, VERSION)
+
+    def test_release_payload_guard_rejects_other_action_missing_tag_draft_or_cross_repository(self):
+        payloads = [
+            {"action": "edited", "release": {"tag_name": "v" + VERSION, "draft": False}},
+            {"action": "published", "release": {"draft": False}},
+            {"action": "published", "release": {"tag_name": "v" + VERSION, "draft": True}},
+            {"action": "published", "release": {"tag_name": "v" + VERSION, "draft": False},
+             "repository": {"full_name": "other/repository"}},
+        ]
+        for payload in payloads:
+            self.event.write_text(json.dumps(payload))
+            with self.subTest(payload=payload), self.assertRaises(publisher.ReleaseError):
+                publisher.production_guard(self.env, VERSION)
+        self.env.pop("GITHUB_EVENT_PATH")
+        with self.assertRaises(publisher.ReleaseError):
+            publisher.production_guard(self.env, VERSION)
 
     def test_remote_tag_mismatch_prevents_all_central_calls(self):
         client = FakePortal()
@@ -507,11 +587,54 @@ class PublishTest(TemporaryTest):
         self.assertEqual(self.identifier.read_text(), DEPLOYMENT + "\n")
         self.assertNotIn("deployment_state", self.output.read_text())
 
-    def test_existing_version_blocks_before_upload(self):
+    def test_existing_exact_version_succeeds_without_upload_poll_or_uuid_write(self):
         client = FakePortal(preflight=200)
-        with self.assertRaisesRegex(publisher.ReleaseError, "already published"):
-            self.invoke(client)
-        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(self.invoke(client), "ALREADY_PUBLISHED")
+        self.assertEqual([method for method, _, _ in client.calls], ["HEAD", "GET"])
+        self.assertEqual(client.calls[0][1], client.calls[1][1])
+        self.assertTrue(client.calls[1][1].startswith(publisher.PUBLIC))
+        self.assertFalse(self.identifier.exists())
+        self.assertEqual(self.output.read_text(), "deployment_state=PUBLISHED\npublication_status=ALREADY_PUBLISHED\n")
+
+    def test_preflight_reports_only_specific_confirmed_existing_version(self):
+        pom = f"com/kaus-io/prism-motion-core/{VERSION}/prism-motion-core-{VERSION}.pom"
+        with self.assertRaises(publisher.AlreadyPublished):
+            publisher.preflight(FakePortal(preflight=200), [pom])
+        for client in (FakePortal(preflight=401), FakePortal(preflight=403), FakePortal(preflight=500),
+                       FakePortal(preflight=200, existing_pom=b"<html>not a POM</html>")):
+            with self.assertRaises(publisher.ReleaseError) as error:
+                publisher.preflight(client, [pom])
+            self.assertNotIsInstance(error.exception, publisher.AlreadyPublished)
+
+    def test_auth_server_or_invalid_existing_pom_errors_are_not_success(self):
+        clients = [FakePortal(preflight=code) for code in (401, 403, 500)]
+        clients += [FakePortal(preflight=200, existing_code=code) for code in (401, 403, 404, 500)]
+        clients += [FakePortal(preflight=200, existing_pom=body) for body in
+                    (b"", b"<html>not a POM</html>", b"<project><groupId>wrong</groupId></project>",
+                     b'<!DOCTYPE project [<!ENTITY leak "forbidden">]><project/>')]
+        for client in clients:
+            with self.subTest(client=client), self.assertRaises(publisher.ReleaseError):
+                self.invoke(client)
+            self.assertTrue(all(method in ("HEAD", "GET") for method, _, _ in client.calls))
+            self.assertEqual(self.output.read_text(), "")
+            self.assertFalse(self.identifier.exists())
+
+    def test_network_failure_is_not_already_published(self):
+        client = FakePortal()
+        with mock.patch.object(client, "request", side_effect=publisher.ReleaseError("Synthetic network failure")):
+            with self.assertRaises(publisher.ReleaseError) as error:
+                self.invoke(client)
+        self.assertNotIsInstance(error.exception, publisher.AlreadyPublished)
+        self.assertEqual(self.output.read_text(), "")
+        self.assertFalse(self.identifier.exists())
+
+    def test_existing_version_still_requires_unchanged_source_before_success(self):
+        commits = iter(("a" * 40, "b" * 40))
+        client = FakePortal(preflight=200)
+        with self.assertRaises(ValueError):
+            self.invoke(client, tag_resolver=lambda version: next(commits))
+        self.assertEqual([method for method, _, _ in client.calls], ["HEAD", "GET"])
+        self.assertEqual(self.output.read_text(), "")
         self.assertFalse(self.identifier.exists())
 
     def test_ambiguous_upload_is_never_retried(self):

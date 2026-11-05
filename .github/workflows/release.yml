@@ -1,238 +1,39 @@
-name: Verified release
+name: Publish Maven Central
 
 on:
-  push:
-    branches: [main]
-    tags: ['v*']
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
 
 concurrency:
-  group: verified-release-${{ github.ref }}
+  group: maven-central-${{ github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
-  build:
+  publish:
     if: github.repository == 'kaus-io/prism-motion'
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      publish: ${{ steps.version.outputs.publish }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          submodules: recursive
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
-        with:
-          distribution: temurin
-          java-version: |
-            17
-            25
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
-        with:
-          python-version: '3.12'
-      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c
-        with:
-          gradle-version: '9.7.1'
-      - name: Prepare isolated release paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "SDK_STAGE=$RUNNER_TEMP/sdk-repository" >> "$GITHUB_ENV"
-          echo "PRISM_STAGE=$RUNNER_TEMP/prism-repository" >> "$GITHUB_ENV"
-          echo "DIST=$RUNNER_TEMP/dist" >> "$GITHUB_ENV"
-          echo "FIXTURES=$RUNNER_TEMP/fixtures" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/dist"
-      - name: Validate release version
-        id: version
-        run: python3 -B scripts/release-version.py
-      - name: Install native and Android build prerequisites
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes build-essential nasm ninja-build cmake gnupg
-          bash scripts/setup-release-android.sh
-          ./scripts/build-thirdparty.sh linux-x86_64
-      - name: Check release helpers and frozen sources
-        run: |
-          set -euo pipefail
-          PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts -p 'test_release*.py' -v
-          python3 -B thirdparty/prism-sdk/verify_snapshot.py
-      - name: Prepare in-memory signing
-        run: python3 -B scripts/prepare-release-signing.py
-        env:
-          GPG_KEY_CONTENTS: ${{ secrets.GPG_KEY_CONTENTS }}
-          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-          SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
-          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-      - name: Stage signed prerequisite packages
-        run: |
-          set -euo pipefail
-          gradle -p thirdparty/prism-sdk/kap stageSdkPublications :kap-android:testDebugUnitTest -PstagingRepository="$SDK_STAGE" --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process --no-configuration-cache --console=plain
-          gradle -p thirdparty/prism-sdk/vap stageSdkPublications :vap-core:jvmTest :vap-decode-api:jvmTest :vap-decode-jvm:jvmTest :vap-compose:jvmTest -PstagingRepository="$SDK_STAGE" --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process --no-configuration-cache --console=plain
-      - name: Validate and stage Prism libraries without Maven Local
-        run: |
-          set -euo pipefail
-          SDK_URI="$(python3 -c 'import os,pathlib; print(pathlib.Path(os.environ["SDK_STAGE"]).as_uri())')"
-          ./gradlew stagePrismPublications :prism-motion-format:jvmTest :prism-motion-core:jvmTest :prism-motion-probe:jvmTest :prism-motion-compose:jvmTest :bench-android:testDebugUnitTest -PstagingRepository="$PRISM_STAGE" -PreleaseStrictDependencies=true -PdependencyRepositoryUrl="$SDK_URI" --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process --no-configuration-cache --console=plain
-          python3 -B scripts/verify-maven-publications.py --repository "$PRISM_STAGE"
-      - name: Run independent Maven consumers
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          SDK_URI="$(python3 -c 'import os,pathlib; print(pathlib.Path(os.environ["SDK_STAGE"]).as_uri())')"
-          PRISM_URI="$(python3 -c 'import os,pathlib; print(pathlib.Path(os.environ["PRISM_STAGE"]).as_uri())')"
-          ./gradlew -p ci/maven-consumer :jvm:run :android:assembleDebug -PprismVersion="$VERSION" -PprismRepositoryUrl="$PRISM_URI" -PsdkRepositoryUrl="$SDK_URI" --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process --no-configuration-cache --console=plain
-      - name: Verify detached signatures and prepare atomic Central bundle
-        run: |
-          set -euo pipefail
-          python3 -B scripts/verify-release-signatures.py --repository "$SDK_STAGE" --repository "$PRISM_STAGE" --public-key-output "$DIST/SIGNING_PUBLIC_KEY.asc"
-          python3 -B scripts/publish-central-bundle.py bundle --repository "$SDK_STAGE" --repository "$PRISM_STAGE" --output "$RUNNER_TEMP/central-bundle.zip"
-      - name: Build native CLI distributions
-        run: |
-          set -euo pipefail
-          ./gradlew :prism-motion-cli:linuxX64Test :prism-motion-cli:embedToolsLinux :prism-motion-cli:embedToolsWindows --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process --no-configuration-cache --console=plain
-          cp prism-motion-cli/build/bin/linuxX64/releaseExecutable/prism-motion.kexe "$DIST/prism-motion-linux-x86_64"
-          cp prism-motion-cli/build/bin/mingwX64/releaseExecutable/prism-motion.exe "$DIST/prism-motion-windows-x86_64.exe"
-      - name: Run actual CLI calls with a new cache
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: python3 -B scripts/smoke-cli-release.py --binary "$DIST/prism-motion-linux-x86_64" --version "$VERSION" --export-fixtures "$FIXTURES"
-      - name: Decode actual Prism fixtures through both JVM engines
-        run: |
-          set -euo pipefail
-          SDK_URI="$(python3 -c 'import os,pathlib; print(pathlib.Path(os.environ["SDK_STAGE"]).as_uri())')"
-          PRISM_TEST_ASTC_ASSET="$FIXTURES/astc.prism" PRISM_TEST_VAP_ASSET="$FIXTURES/video.prism" PRISM_MOTION_ASTC_LIB="$GITHUB_WORKSPACE/thirdparty/native/linux-x86_64/libastcenc.so" PRISM_MOTION_DECODE_LIB="$GITHUB_WORKSPACE/thirdparty/native/linux-x86_64/libprismdecode.so" ./gradlew :prism-motion-engine-kap:jvmTest :prism-motion-engine-vap:jvmTest -PreleaseStrictDependencies=true -PdependencyRepositoryUrl="$SDK_URI" --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx3g -Dfile.encoding=UTF-8" -Pkotlin.compiler.execution.strategy=in-process --no-configuration-cache --console=plain
-      - name: Collect notices and immutable checksums
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import hashlib, os
-          from pathlib import Path
-          dist = Path(os.environ['DIST'])
-          (dist / 'LICENSE.txt').write_bytes(Path('LICENSE').read_bytes())
-          notices = []
-          for name, path in [('OpenH264', 'thirdparty/upstream/openh264/LICENSE'), ('stb', 'thirdparty/upstream/stb/LICENSE'), ('astcenc', 'thirdparty/upstream/astcenc/LICENSE.txt')]:
-              notices.append(name + '\n' + Path(path).read_text() + '\n')
-          (dist / 'THIRD_PARTY_NOTICES.txt').write_text('\n'.join(notices))
-          files = sorted(path for path in dist.iterdir() if path.is_file())
-          (dist / 'SHA256SUMS').write_text(''.join(hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name + '\n' for path in files))
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: cli-dist
-          path: ${{ runner.temp }}/dist/
-          if-no-files-found: error
-          retention-days: 14
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: smoke-fixtures
-          path: ${{ runner.temp }}/fixtures/
-          if-no-files-found: error
-          retention-days: 14
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: central-bundle
-          path: |
-            ${{ runner.temp }}/central-bundle.zip
-            ${{ runner.temp }}/central-bundle.zip.sha256
-          if-no-files-found: error
-          retention-days: 14
-
-  windows-smoke:
-    needs: build
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
-        with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: cli-dist
-          path: dist
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: smoke-fixtures
-          path: fixtures
-      - name: Exercise the Windows reader and embedded tool
-        env:
-          VERSION: ${{ needs.build.outputs.version }}
-        run: python -B scripts/smoke-cli-release.py --binary dist/prism-motion-windows-x86_64.exe --version "$env:VERSION" --fixtures fixtures
-
-  publish-central:
-    needs: [build, windows-smoke]
-    if: needs.build.outputs.publish == 'true'
-    runs-on: ubuntu-22.04
     timeout-minutes: 40
-    outputs:
-      state: ${{ steps.central.outputs.deployment_state }}
+    env:
+      RELEASE_SOURCE_DIRECTORY: ${{ github.workspace }}/tag-source
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: publisher
+          persist-credentials: false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          path: tag-source
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: central-bundle
-          path: bundle
-      - name: Restore deployment identity when retrying failed jobs
-        if: github.run_attempt > 1
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: central-deployment-id
-          path: ${{ runner.temp }}/prior-deployment
-      - name: Publish or resume the exact validated bundle
-        id: central
+      - name: Publish the release to Maven Central or skip an existing version
         env:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-        run: |
-          python3 - <<'PY'
-          import os, subprocess
-          from pathlib import Path
-          temporary = Path(os.environ['RUNNER_TEMP'])
-          command = ['python3', '-B', 'scripts/publish-central-bundle.py', 'publish', '--bundle', 'bundle/central-bundle.zip', '--deployment-id-file', str(temporary / 'deployment-id.txt'), '--timeout', '1800']
-          previous = temporary / 'prior-deployment/deployment-id.txt'
-          if previous.is_file():
-              command += ['--deployment-id', previous.read_text().strip()]
-          subprocess.run(command, check=True)
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: central-deployment-id
-          path: ${{ runner.temp }}/deployment-id.txt
-          if-no-files-found: ignore
-          overwrite: true
-          retention-days: 14
-
-  github-prerelease:
-    needs: [build, windows-smoke, publish-central]
-    if: needs.build.outputs.publish == 'true' && needs.publish-central.outputs.state == 'PUBLISHED'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          name: cli-dist
-          path: dist
-      - name: Verify download checksums
-        working-directory: dist
-        run: sha256sum --check SHA256SUMS
-      - name: Publish or safely resume the GitHub prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 -B scripts/publish-github-prerelease.py --distribution dist
+        run: python3 -B publisher/scripts/publish-release-to-central.py

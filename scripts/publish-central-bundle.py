@@ -32,6 +32,10 @@ SOURCE_SPEC = importlib.util.spec_from_file_location("central_release_source", P
 assert SOURCE_SPEC is not None and SOURCE_SPEC.loader is not None
 SOURCE = importlib.util.module_from_spec(SOURCE_SPEC)
 SOURCE_SPEC.loader.exec_module(SOURCE)
+REQUEST_SPEC = importlib.util.spec_from_file_location("central_release_request", Path(__file__).with_name("release-request.py"))
+assert REQUEST_SPEC is not None and REQUEST_SPEC.loader is not None
+REQUEST = importlib.util.module_from_spec(REQUEST_SPEC)
+REQUEST_SPEC.loader.exec_module(REQUEST)
 GROUP = "com.kaus-io"
 PREFIX = "com/kaus-io/"
 PORTAL = "https://central.sonatype.com/api/v1/publisher"
@@ -71,6 +75,10 @@ MAX_ENTRIES = 10000
 
 class ReleaseError(ValueError):
     """仅包含固定安全消息的发布失败。 / A release failure containing only fixed, safe messages."""
+
+
+class AlreadyPublished(ReleaseError):
+    """仅由公开仓库中已核实的精确 POM 坐标触发。 / Raised only for an exact POM coordinate confirmed in the public repository."""
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -122,9 +130,13 @@ def require(condition: bool, message: str) -> None:
         raise ReleaseError(message)
 
 
-def project_version() -> str:
-    """读取唯一的仓库版本来源。 / Reads the repository's single version authority."""
-    properties = Path(__file__).resolve().parents[1] / "gradle.properties"
+def project_version(source_directory: Path | str | None = None) -> str:
+    """读取发布标签源码的唯一版本清单，默认使用脚本所在仓库。 / Reads the release tag source's single version manifest, defaulting to the script's repository."""
+    directory = source_directory if source_directory is not None else os.environ.get("RELEASE_SOURCE_DIRECTORY", str(Path(__file__).resolve().parents[1]))
+    require(bool(str(directory).strip()), "Release source directory must not be empty")
+    source = safe_path(Path(directory))
+    require(source.is_dir(), "Release source must be an existing directory")
+    properties = safe_path(source / "gradle.properties")
     versions = []
     for line in properties.read_text(encoding="utf-8").splitlines():
         key, separator, value = line.partition("=")
@@ -136,23 +148,20 @@ def project_version() -> str:
     return versions[0]
 
 
-def release_version(requested: str | None) -> str:
-    """禁止命令行版本覆盖根版本。 / Forbids overriding the root version from the command line."""
-    version = project_version()
+def release_version(requested: str | None, source_directory: Path | str | None = None) -> str:
+    """禁止命令行版本覆盖发布标签清单的版本。 / Forbids overriding the release tag manifest version from the command line."""
+    version = project_version(source_directory)
     require(requested is None or requested == version, "Requested version differs from the root version")
     return version
 
 
 def production_guard(environment: Mapping[str, str], version: str) -> None:
-    """只允许主仓库的精确版本标签，拒绝 PR 和分支。 / Allows only the main repository's exact version tag, never PRs or branches."""
-    require(environment.get("GITHUB_REPOSITORY") == "kaus-io/prism-motion",
-            "Publishing requires the authorized GitHub repository")
-    require(environment.get("GITHUB_REF") == f"refs/tags/v{version}",
-            "Publishing requires the exact root-version tag")
-    require(environment.get("GITHUB_EVENT_NAME") in ("push", "workflow_dispatch")
-            and not environment.get("GITHUB_HEAD_REF")
-            and environment.get("GITHUB_REF_TYPE", "tag") == "tag",
-            "Publishing from pull requests or branches is forbidden")
+    """Central 只接受已公开的准确版本 Release，不依赖 GitHub 发布令牌。 / Accepts only the published exact-version Release without a GitHub publishing token."""
+    try:
+        requested = REQUEST.publication_requested(environment, version)
+    except ValueError:
+        raise ReleaseError("Publishing requires a published canonical exact root-version Release") from None
+    require(requested, "Publishing requires a published canonical exact root-version Release")
 
 
 def safe_path(path: Path, existing: bool = True) -> Path:
@@ -338,8 +347,9 @@ def verify_bundle(stream: BinaryIO, filename: str, manifest: Path, version: str)
     """上传前复核清单和所有 ZIP 条目，不解压到磁盘。 / Rechecks the manifest and every ZIP entry before upload, without extracting to disk."""
     manifest = safe_path(manifest)
     require(manifest.stat().st_size <= 4096, "Invalid checksum manifest")
-    expected = manifest.read_text(encoding="ascii")
-    require(expected == f"{stream_digest(stream)}  {filename}\n", "Bundle checksum manifest mismatch")
+    expected = manifest.read_bytes()
+    checksum_line = f"{stream_digest(stream)}  {filename}".encode("ascii")
+    require(expected in (checksum_line, checksum_line + b"\n"), "Bundle checksum manifest mismatch")
     require(os.fstat(stream.fileno()).st_size <= MAX_BUNDLE, "Bundle exceeds the safety limit")
     try:
         with zipfile.ZipFile(stream) as archive:
@@ -360,8 +370,29 @@ def verify_bundle(stream: BinaryIO, filename: str, manifest: Path, version: str)
     return poms
 
 
+def confirm_already_published(client: PortalClient, pom: str) -> None:
+    """HEAD 命中后读取同一公开 POM，只确认准确 GAV 已存在。 / Confirms an exact GAV by reading the same public POM after a successful HEAD."""
+    parts = pom.split("/")
+    require(len(parts) == 5, "Invalid public POM coordinate")
+    artifact, version = parts[2], parts[3]
+    artifact_path(pom, version)
+    code, body = client.request("GET", PUBLIC + pom, authenticated=False)
+    require(code == 200, "Cannot confirm the existing public POM")
+    require(b"<!DOCTYPE" not in body.upper() and b"<!ENTITY" not in body.upper(), "Unsafe existing public POM")
+    try:
+        project = ET.fromstring(body)
+    except ET.ParseError:
+        raise ReleaseError("Invalid existing public POM") from None
+    namespace = "{http://maven.apache.org/POM/4.0.0}" if project.tag.startswith("{") else ""
+    coordinates = tuple((project.findtext(namespace + field) or "").strip()
+                        for field in ("groupId", "artifactId", "version"))
+    require(project.tag == namespace + "project" and coordinates == (GROUP, artifact, version),
+            "Existing public POM coordinates do not match")
+    raise AlreadyPublished("The exact artifact version is already published")
+
+
 def preflight(client: PortalClient, poms: list[str]) -> None:
-    """只用公开仓库 HEAD 检查所有即将发布的坐标。 / Uses public-repository HEAD requests to check all coordinates before mutation."""
+    """检查公开坐标，只有核实已存在的准确版本才允许幂等成功。 / Checks public coordinates and allows idempotent success only for a confirmed exact existing version."""
     for pom in poms:
         for attempt in range(3):
             try:
@@ -372,7 +403,8 @@ def preflight(client: PortalClient, poms: list[str]) -> None:
                 continue
             if code == 404:
                 break
-            require(code != 200, "An included version is already published; refusing to overwrite")
+            if code == 200:
+                confirm_already_published(client, pom)
             if code not in (429, 500, 502, 503, 504) or attempt == 2:
                 raise ReleaseError("Public repository preflight failed; upload was not attempted")
 
@@ -432,7 +464,7 @@ def poll(client: PortalClient, deployment: str, interval: float, timeout: float,
 def publish(bundle_path: Path, manifest: Path, version: str, environment: Mapping[str, str],
             deployment_id_file: Path | None = None, interval: float = 10, timeout: float = 1800,
             deployment_id: str | None = None, *, tag_resolver=None, commit_resolver=None) -> str:
-    """先检查标签、清单和不可变性，再上传一次并等待发布。 / Checks tag, manifest and immutability, uploads once, then waits for publication."""
+    """核对已公开 Release、标签和不可变性，准确重发幂等成功。 / Checks the published Release, tag, and immutability and handles exact repeated publication idempotently."""
     production_guard(environment, version)
     require(1 <= interval <= 60 and 1 <= timeout <= 7200, "Polling bounds are invalid")
     path = safe_path(bundle_path)
@@ -454,6 +486,7 @@ def publish(bundle_path: Path, manifest: Path, version: str, environment: Mappin
         require(commit == environment.get("GITHUB_SHA"), "Checkout differs from the canonical event commit")
         resolver = tag_resolver or SOURCE.remote_tag_commit
         SOURCE.verify_tag(version, commit, resolver)
+        production_guard(environment, version)
         client = PortalClient(environment)
         if deployment_id is not None:
             print(f"Central deployment {deployment_id}: RESUMING", flush=True)
@@ -463,9 +496,18 @@ def publish(bundle_path: Path, manifest: Path, version: str, environment: Mappin
             output_value(environment, "deployment_id", deployment_id)
             poll(client, deployment_id, interval, timeout)
             SOURCE.verify_tag(version, commit, resolver)
+            production_guard(environment, version)
             output_value(environment, "deployment_state", "PUBLISHED")
             return deployment_id
-        preflight(client, poms)
+        try:
+            preflight(client, poms)
+        except AlreadyPublished:
+            SOURCE.verify_tag(version, commit, resolver)
+            production_guard(environment, version)
+            print("The exact Central version is already published; no upload was attempted", flush=True)
+            output_value(environment, "deployment_state", "PUBLISHED")
+            output_value(environment, "publication_status", "ALREADY_PUBLISHED")
+            return "ALREADY_PUBLISHED"
         boundary = "prism-central-" + secrets.token_hex(24)
         stream.seek(0)
         prefix = next(multipart(io.BytesIO(b""), boundary))
@@ -473,6 +515,7 @@ def publish(bundle_path: Path, manifest: Path, version: str, environment: Mappin
         headers = {"Content-Type": f"multipart/form-data; boundary={boundary}",
                    "Content-Length": str(len(prefix) + os.fstat(stream.fileno()).st_size + len(suffix))}
         SOURCE.verify_tag(version, commit, resolver)
+        production_guard(environment, version)
         code, body = client.request("POST", PORTAL + "/upload?publishingType=AUTOMATIC",
                                     data=multipart(stream, boundary), headers=headers, timeout=120)
         require(code == 201, "Central upload failed or is ambiguous; never blindly retry this upload")
@@ -487,6 +530,7 @@ def publish(bundle_path: Path, manifest: Path, version: str, environment: Mappin
     output_value(environment, "deployment_id", deployment)
     poll(client, deployment, interval, timeout)
     SOURCE.verify_tag(version, commit, resolver)
+    production_guard(environment, version)
     output_value(environment, "deployment_state", "PUBLISHED")
     return deployment
 

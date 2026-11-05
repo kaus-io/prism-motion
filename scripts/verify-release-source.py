@@ -33,8 +33,11 @@ def git_output(arguments: list[str], directory: Path, runner=subprocess.run) -> 
 
 
 def checkout_commit(environment: Mapping[str, str], runner=subprocess.run) -> str:
-    """要求 checkout HEAD 与事件提交完全一致。 / Requires checkout HEAD to match the event commit exactly."""
-    commit = git_output(["rev-parse", "--verify", "HEAD^{commit}"], ROOT, runner).strip()
+    """要求发布源码 checkout 与事件提交一致，允许发布工具来自新主干。 / Matches the source checkout to the event commit even when publishing tools come from newer main."""
+    directory = Path(environment.get("RELEASE_SOURCE_DIRECTORY", str(ROOT))).absolute()
+    if not directory.is_dir() or any(part.is_symlink() for part in (directory, *directory.parents)):
+        raise ValueError(ERROR)
+    commit = git_output(["rev-parse", "--verify", "HEAD^{commit}"], directory, runner).strip()
     if SHA.fullmatch(commit) is None or environment.get("GITHUB_SHA") != commit:
         raise ValueError(ERROR)
     return commit

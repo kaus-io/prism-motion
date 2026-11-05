@@ -2,11 +2,16 @@
 """校验清单、CI 标签和首发命名空间的一致性。 / Validates manifest, CI tag and initial-release namespace consistency."""
 
 import argparse
+import importlib.util
 import os
 from pathlib import Path
 import re
 import sys
 
+REQUEST_SPEC = importlib.util.spec_from_file_location("version_release_request", Path(__file__).with_name("release-request.py"))
+assert REQUEST_SPEC is not None and REQUEST_SPEC.loader is not None
+REQUEST = importlib.util.module_from_spec(REQUEST_SPEC)
+REQUEST_SPEC.loader.exec_module(REQUEST)
 ROOT = Path(__file__).resolve().parents[1]
 VERSION_PATTERN = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)(?:0[1-9]|[1-9][0-9]))?")
 
@@ -33,12 +38,9 @@ def main() -> int:
         sdk_versions = {release_version(ROOT / "thirdparty" / "prism-sdk" / sdk, "") for sdk in ("kap", "vap")}
         if sdk_versions != {version}:
             raise ValueError("First-release bootstrap requires matching SDK and Prism versions; do not republish frozen SDKs")
+        publishing = REQUEST.publication_requested(os.environ, version)
     except (OSError, KeyError, ValueError) as error:
         print(f"Release metadata check failed: {error}", file=sys.stderr)
-        return 1
-    publishing = args.ref == f"refs/tags/v{version}"
-    if publishing and os.environ.get("GITHUB_REPOSITORY") != "kaus-io/prism-motion":
-        print("Publishing is restricted to the canonical repository", file=sys.stderr)
         return 1
     values = {"version": version, "publish": str(publishing).lower(), "prerelease": str("-" in version).lower()}
     if path := os.environ.get("GITHUB_OUTPUT"):
