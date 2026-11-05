@@ -45,7 +45,18 @@ if [[ "$LICENSE_STATUS" != 0 ]]; then
   report_failure
   exit "$LICENSE_STATUS"
 fi
-if ! JAVA_HOME="$TOOLS_JAVA" "$SDK_MANAGER" 'platforms;android-37' 'cmake;3.22.1' >> "$LOG" 2>&1; then
+PLATFORM="$(python3 - "${BASH_SOURCE[0]}" <<'PY'
+from pathlib import Path
+import sys
+import tomllib
+catalog = Path(sys.argv[1]).resolve().parents[1] / 'gradle/libs.versions.toml'
+api = str(tomllib.loads(catalog.read_text())['versions']['android-compileSdk'])
+if api.isdigit() and int(api) >= 37:
+    api += '.0'
+print('platforms;android-' + api)
+PY
+)"
+if ! JAVA_HOME="$TOOLS_JAVA" "$SDK_MANAGER" "$PLATFORM" 'cmake;3.22.1' >> "$LOG" 2>&1; then
   report_failure
   exit 1
 fi

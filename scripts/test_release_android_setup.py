@@ -29,6 +29,7 @@ elif [[ "$1" == '--licenses' ]]; then
 else
   if [[ "${FAIL_PHASE:-}" == install ]]; then echo 'synthetic install failure'; exit 8; fi
   [[ "$JAVA_HOME" == "$EXPECTED_JAVA" ]]
+  [[ "$1" == 'platforms;android-37.0' ]]
 fi
 ''')
         manager.chmod(0o700)
