@@ -159,8 +159,8 @@ def production_guard(environment: Mapping[str, str], version: str) -> None:
     """Central 只接受已公开的准确版本 Release，不依赖 GitHub 发布令牌。 / Accepts only the published exact-version Release without a GitHub publishing token."""
     try:
         requested = REQUEST.publication_requested(environment, version)
-    except ValueError:
-        raise ReleaseError("Publishing requires a published canonical exact root-version Release") from None
+    except ValueError as error:
+        raise ReleaseError(str(error)) from None
     require(requested, "Publishing requires a published canonical exact root-version Release")
 
 

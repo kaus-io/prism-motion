@@ -23,7 +23,7 @@ def release_version(root: Path, reference: str) -> str:
     version = properties["version"]
     if not VERSION_PATTERN.fullmatch(version):
         raise ValueError("Invalid release version")
-    if reference.startswith("refs/tags/") and reference != f"refs/tags/v{version}":
+    if reference.startswith("refs/tags/") and reference != f"refs/tags/{version}":
         raise ValueError("Release tag disagrees with gradle.properties")
     return version
 

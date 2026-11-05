@@ -47,7 +47,7 @@ def remote_tag_commit(version: str, runner=subprocess.run) -> str:
     """使用服务器递归剥离后的标签提交，兼容轻量标签。 / Uses server-peeled annotated tags, including nested tags, or lightweight tags."""
     if re.fullmatch(r"1\.0\.0-alpha(?:0[1-9]|[1-9][0-9])", version) is None:
         raise ValueError(ERROR)
-    reference = "refs/tags/v" + version
+    reference = "refs/tags/" + version
     output = git_output(["ls-remote", "--exit-code", "--", REMOTE, reference, reference + "^{}"],
                         Path(tempfile.gettempdir()), runner)
     refs = {}

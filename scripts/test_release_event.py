@@ -56,12 +56,12 @@ class ReleaseEventFixture(unittest.TestCase):
         self.root = Path(temporary.name)
         self.event_path = self.root / "event.json"
         self.env = {
-            "GITHUB_EVENT_NAME": "release", "GITHUB_REF": f"refs/tags/v{VERSION}",
+            "GITHUB_EVENT_NAME": "release", "GITHUB_REF": f"refs/tags/{VERSION}",
             "GITHUB_REF_TYPE": "tag", "GITHUB_REPOSITORY": "kaus-io/prism-motion",
             "GITHUB_SHA": "a" * 40, "GITHUB_EVENT_PATH": str(self.event_path),
         }
         self.event = {"action": "published", "repository": {"full_name": "kaus-io/prism-motion"},
-                      "release": {"draft": False, "tag_name": f"v{VERSION}", "assets": []}}
+                      "release": {"draft": False, "tag_name": VERSION, "assets": []}}
         self.pom_url = f"{release.PUBLIC}{VERSION}/prism-motion-core-{VERSION}.pom"
         archive = io.BytesIO()
         with zipfile.ZipFile(archive, "w") as output:
@@ -85,15 +85,15 @@ class ReleaseEventFixture(unittest.TestCase):
 
     def _asset(self, name, data):
         return {"name": name, "state": "uploaded", "size": len(data),
-                "browser_download_url": f"{release.DOWNLOAD}v{VERSION}/{name}"}
+                "browser_download_url": f"{release.DOWNLOAD}{VERSION}/{name}"}
 
     def _ready(self):
         self.event["release"]["assets"] = [self._asset(release.BUNDLE, self.bundle),
                                              self._asset(release.MANIFEST, self.manifest)]
         self._write_event()
         return FakeFetch({self.pom_url: (404, b""),
-                          f"{release.DOWNLOAD}v{VERSION}/{release.MANIFEST}": (200, self.manifest),
-                          f"{release.DOWNLOAD}v{VERSION}/{release.BUNDLE}": (200, self.bundle)})
+                          f"{release.DOWNLOAD}{VERSION}/{release.MANIFEST}": (200, self.manifest),
+                          f"{release.DOWNLOAD}{VERSION}/{release.BUNDLE}": (200, self.bundle)})
 
     def _run(self, fetcher):
         with contextlib.redirect_stdout(io.StringIO()):
@@ -183,10 +183,11 @@ class ReleaseEventTest(ReleaseEventFixture):
 
     def test_noncanonical_asset_urls_fail_before_fetch(self):
         """拒绝任意主机、转义路径、查询和认证 URL。 / Rejects arbitrary hosts, escaped paths, queries and authenticated URLs."""
-        for url in ("https://example.invalid/bundle.zip", f"{release.DOWNLOAD}v{VERSION}/../{release.BUNDLE}",
-                    f"{release.DOWNLOAD}v{VERSION}/{release.BUNDLE}?token=secret",
-                    f"http://github.com/kaus-io/prism-motion/releases/download/v{VERSION}/{release.BUNDLE}",
-                    f"https://user:secret@github.com/kaus-io/prism-motion/releases/download/v{VERSION}/{release.BUNDLE}"):
+        for url in ("https://example.invalid/bundle.zip", f"{release.DOWNLOAD}v{VERSION}/{release.BUNDLE}",
+                    f"{release.DOWNLOAD}{VERSION}/../{release.BUNDLE}",
+                    f"{release.DOWNLOAD}{VERSION}/{release.BUNDLE}?token=secret",
+                    f"http://github.com/kaus-io/prism-motion/releases/download/{VERSION}/{release.BUNDLE}",
+                    f"https://user:secret@github.com/kaus-io/prism-motion/releases/download/{VERSION}/{release.BUNDLE}"):
             with self.subTest(url=url):
                 fetcher = self._ready()
                 self.event["release"]["assets"][0]["browser_download_url"] = url
@@ -237,10 +238,10 @@ class ReleaseEventTest(ReleaseEventFixture):
             for code in (404, 401, 403, 500):
                 with self.subTest(name=name, code=code):
                     fetcher = self._ready()
-                    fetcher.responses[f"{release.DOWNLOAD}v{VERSION}/{name}"] = (code, b"sensitive")
+                    fetcher.responses[f"{release.DOWNLOAD}{VERSION}/{name}"] = (code, b"sensitive")
                     self._fails(fetcher)
             fetcher = self._ready()
-            fetcher.responses[f"{release.DOWNLOAD}v{VERSION}/{name}"] = (200, b"truncated")
+            fetcher.responses[f"{release.DOWNLOAD}{VERSION}/{name}"] = (200, b"truncated")
             self._fails(fetcher)
 
     def test_asset_network_failures_never_upload(self):
@@ -249,18 +250,18 @@ class ReleaseEventTest(ReleaseEventFixture):
             for error in (TimeoutError("sensitive"), urllib.error.URLError("sensitive")):
                 with self.subTest(name=name, error=type(error).__name__):
                     fetcher = self._ready()
-                    fetcher.responses[f"{release.DOWNLOAD}v{VERSION}/{name}"] = error
+                    fetcher.responses[f"{release.DOWNLOAD}{VERSION}/{name}"] = error
                     self._fails(fetcher, type(error))
 
     def test_download_bounds_apply_even_to_injected_clients(self):
         """注入客户端也不能绕过字节上限。 / Injected clients cannot bypass byte limits."""
         self._fails(FakeFetch({self.pom_url: (200, b"x" * (1024 * 1024 + 1))}))
         fetcher = self._ready()
-        fetcher.responses[f"{release.DOWNLOAD}v{VERSION}/{release.MANIFEST}"] = (200, b"x" * 1025)
+        fetcher.responses[f"{release.DOWNLOAD}{VERSION}/{release.MANIFEST}"] = (200, b"x" * 1025)
         self._fails(fetcher)
         fetcher = self._ready()
         with mock.patch.object(release.core, "MAX_BUNDLE", len(self.bundle)):
-            fetcher.responses[f"{release.DOWNLOAD}v{VERSION}/{release.BUNDLE}"] = (200, self.bundle + b"x")
+            fetcher.responses[f"{release.DOWNLOAD}{VERSION}/{release.BUNDLE}"] = (200, self.bundle + b"x")
             self._fails(fetcher)
 
     def test_good_zip_and_sidecar_are_forwarded_byte_identically(self):
@@ -308,13 +309,50 @@ class ReleaseEventTest(ReleaseEventFixture):
         with self.assertRaises(PermissionError):
             self._run(self._ready())
 
-    def test_cli_error_is_fixed_and_redacted(self):
-        """入口只输出固定错误，不泄漏环境或响应内容。 / The entry point emits only fixed errors without environment or response contents."""
-        for error in (TimeoutError("SENSITIVE_RESPONSE"), ValueError("SENSITIVE_PASSWORD")):
-            output = io.StringIO()
-            with mock.patch.object(release, "publish_release", side_effect=error), mock.patch.object(sys, "argv", ["publisher"]), contextlib.redirect_stderr(output):
-                self.assertEqual(release.main(), 1)
-            self.assertEqual(output.getvalue(), "Release publication failed; local and HTTP details suppressed.\n")
+    def _cli_failure(self, error):
+        output = io.StringIO()
+        with mock.patch.object(release, "publish_release", side_effect=error), mock.patch.object(sys, "argv", ["publisher"]), contextlib.redirect_stderr(output):
+            self.assertEqual(release.main(), 1)
+        self.assertNotIn("SENSITIVE", output.getvalue())
+        self.assertNotIn("Traceback", output.getvalue())
+        return output.getvalue()
+
+    def test_cli_unknown_errors_remain_fixed_and_redacted(self):
+        """未知异常不泄漏消息、凭据和本地路径。 / Unknown failures never expose messages, credentials or local paths."""
+        for error in (ValueError("SENSITIVE_PASSWORD"), PermissionError("/SENSITIVE_LOCAL_PATH"),
+                      RuntimeError("SENSITIVE_RESPONSE")):
+            self.assertEqual(self._cli_failure(error), "Release publication failed; local and HTTP details suppressed.\n")
+
+    def test_cli_trusted_release_error_exposes_safe_reason(self):
+        """受信任的固定保护消息可用于定位失败。 / Trusted fixed guard messages help diagnose failures."""
+        self.assertEqual(self._cli_failure(release.core.ReleaseError("Bundle checksum mismatch")),
+                         "Release publication failed: Bundle checksum mismatch\n")
+
+    def test_cli_http_errors_expose_only_numeric_status(self):
+        """HTTP 失败只输出状态码，不输出地址、正文或响应头。 / HTTP failures expose status codes but never URLs, bodies or response headers."""
+        for code in (401, 403, 500):
+            body = io.BytesIO(b"SENSITIVE_RESPONSE_BODY")
+            self.addCleanup(body.close)
+            error = urllib.error.HTTPError("https://SENSITIVE_USER:SENSITIVE_PASSWORD@example.invalid/SENSITIVE_PATH",
+                                           code, "SENSITIVE_REASON", {"Authorization": "SENSITIVE_HEADER"}, body)
+            self.assertEqual(self._cli_failure(error),
+                             f"Release publication failed: HTTP status {code}; response details suppressed.\n")
+            self.assertTrue(body.closed)
+
+    def test_cli_network_errors_expose_only_safe_category(self):
+        """超时和网络故障只输出固定类别。 / Timeouts and network failures expose only fixed categories."""
+        for error, category in ((TimeoutError("SENSITIVE_TIMEOUT"), "network timeout (TimeoutError)"),
+                                (urllib.error.URLError("SENSITIVE_URL"), "network request error (URLError)"),
+                                (urllib.error.URLError(TimeoutError("SENSITIVE_TIMEOUT")), "network request error (URLError)")):
+            self.assertEqual(self._cli_failure(error),
+                             f"Release publication failed: {category}; details suppressed.\n")
+
+    def test_cli_only_exact_known_source_error_is_reported(self):
+        """仅准确的来源保护常量可以展示，其它值错误仍脱敏。 / Only the exact source-guard constant is reportable; other value errors remain redacted."""
+        self.assertEqual(self._cli_failure(ValueError(release.core.SOURCE.ERROR)),
+                         f"Release publication failed: {release.core.SOURCE.ERROR}\n")
+        self.assertEqual(self._cli_failure(ValueError(release.core.SOURCE.ERROR + " SENSITIVE_TRAILER")),
+                         "Release publication failed; local and HTTP details suppressed.\n")
 
     def test_cli_no_argument_success(self):
         """入口直接转交真实进程环境，成功返回零。 / The entry point forwards the process environment directly and returns zero on success."""
@@ -372,7 +410,7 @@ class ReleaseEventTest(ReleaseEventFixture):
 
     def test_redirects_allow_https_cdn_but_never_plaintext_or_userinfo(self):
         """允许标准 HTTPS CDN 跳转，拒绝明文和认证地址。 / Allows standard HTTPS CDN redirects but rejects plaintext and user information."""
-        request = urllib.request.Request(f"{release.DOWNLOAD}v{VERSION}/{release.BUNDLE}", method="GET")
+        request = urllib.request.Request(f"{release.DOWNLOAD}{VERSION}/{release.BUNDLE}", method="GET")
         handler = release._HttpsRedirect()
         redirected = handler.redirect_request(request, None, 302, "", {}, "https://release-assets.githubusercontent.com/synthetic")
         self.assertEqual(redirected.get_method(), "GET")
@@ -412,10 +450,43 @@ class ReleaseGuardIntegrationTest(ReleaseEventFixture):
         """准确的 release.published 事件可直接确认已发布。 / An exact release.published event can directly confirm an existing version."""
         self.assertEqual(self._run(FakeFetch({self.pom_url: (200, _pom())})), "ALREADY_PUBLISHED")
 
+    def test_real_guard_rejects_legacy_v_prefixed_tags(self):
+        """旧 v 前缀无论在引用、事件或两处出现都不再接受。 / Rejects the legacy v prefix in the ref, event tag or both."""
+        original_event = copy.deepcopy(self.event)
+        original_env = dict(self.env)
+        for legacy_ref, legacy_event in ((True, False), (False, True), (True, True)):
+            with self.subTest(ref=legacy_ref, event=legacy_event):
+                self.env = dict(original_env)
+                self.event = copy.deepcopy(original_event)
+                if legacy_ref:
+                    self.env["GITHUB_REF"] = f"refs/tags/v{VERSION}"
+                if legacy_event:
+                    self.event["release"]["tag_name"] = f"v{VERSION}"
+                self._write_event()
+                fetcher = FakeFetch({})
+                self._fails(fetcher)
+                self.assertEqual(fetcher.calls, [])
+
+    def test_cli_malformed_release_event_exposes_safe_guard_reason(self):
+        """损坏事件报告有用的发布保护原因，不泄漏事件或密钥。 / A malformed event reports the useful publication-guard reason without leaking payloads or secrets."""
+        self.event_path.write_text("{SENSITIVE_EVENT_BODY", encoding="utf-8")
+        environment = {**self.env, "MAVEN_CENTRAL_USERNAME": "SENSITIVE_USER",
+                       "MAVEN_CENTRAL_PASSWORD": "SENSITIVE_PASSWORD"}
+        output = io.StringIO()
+        with mock.patch.dict(release.os.environ, environment, clear=True), mock.patch.object(sys, "argv", ["publisher"]), contextlib.redirect_stderr(output):
+            self.assertEqual(release.main(), 1)
+        self.assertIn("Cannot validate the published Release event payload", output.getvalue())
+        self.assertNotIn("SENSITIVE", output.getvalue())
+        self.assertNotIn(str(self.root), output.getvalue())
+        self.assertNotIn("Traceback", output.getvalue())
+        self.http.assert_not_called()
+        self.publisher.assert_not_called()
+        self.portal.assert_not_called()
+
     def test_real_guard_rejects_wrong_action_tag_draft_and_repository(self):
         """真实保护器在任何 HTTP 前拒绝错误发布来源。 / The real guard rejects invalid release origins before any HTTP."""
         original = copy.deepcopy(self.event)
-        changes = (("action", "edited"), ("tag_name", f"v{VERSION}-wrong"),
+        changes = (("action", "edited"), ("tag_name", f"{VERSION}-wrong"),
                    ("draft", True), ("repository", "foreign/repository"))
         for field, value in changes:
             with self.subTest(field=field):

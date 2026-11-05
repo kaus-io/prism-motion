@@ -112,10 +112,12 @@ class ReleaseCliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="prism-version-test-") as directory:
             root = Path(directory)
             (root / "gradle.properties").write_text("version=1.0.0-alpha01\n")
-            self.assertEqual(VERSION.release_version(root, "refs/tags/v1.0.0-alpha01"), "1.0.0-alpha01")
+            self.assertEqual(VERSION.release_version(root, "refs/tags/1.0.0-alpha01"), "1.0.0-alpha01")
             self.assertEqual(VERSION.release_version(root, "refs/heads/main"), "1.0.0-alpha01")
             with self.assertRaises(ValueError):
-                VERSION.release_version(root, "refs/tags/v1.0.0-alpha02")
+                VERSION.release_version(root, "refs/tags/v1.0.0-alpha01")
+            with self.assertRaises(ValueError):
+                VERSION.release_version(root, "refs/tags/1.0.0-alpha02")
             (root / "gradle.properties").write_text("version=1.0.0-alpha1\n")
             with self.assertRaises(ValueError):
                 VERSION.release_version(root, "")

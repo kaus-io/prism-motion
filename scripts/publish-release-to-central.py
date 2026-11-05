@@ -65,7 +65,11 @@ def fetch(url: str, max_bytes: int):
 def _transfer(fetcher, url, limit, destination):
     code, chunks = fetcher(url, limit)
     try:
-        core.require(code in (200, 404), "Public download failed")
+        core.require(type(code) is int and 100 <= code <= 599, "Invalid public HTTP status")
+        if code not in (200, 404):
+            error = urllib.error.HTTPError(url, code, "Public download failed", {}, None)
+            error.close()
+            raise error
         if code == 404:
             return code, 0
         size = 0
@@ -115,7 +119,7 @@ def _assets(environment, version):
         core.require(name not in selected and asset.get("state") == "uploaded"
                      and asset.get("type", "file") == "file"
                      and type(asset.get("size")) is int and 0 < asset["size"] <= limit
-                     and asset.get("browser_download_url") == f"{DOWNLOAD}v{version}/{name}",
+                     and asset.get("browser_download_url") == f"{DOWNLOAD}{version}/{name}",
                      "Release bundle asset metadata is unsafe or ambiguous")
         selected[name] = asset
     core.require(set(selected) == {BUNDLE, MANIFEST}, "Release bundle assets are missing")
@@ -151,13 +155,32 @@ def publish_release(environment: Mapping[str, str], fetcher=fetch, publisher=Non
         return (publisher or core.publish)(bundle, sidecar, version, environment)
 
 
+def _failure_message(error):
+    if isinstance(error, core.ReleaseError):
+        return f"Release publication failed: {error}"
+    if isinstance(error, urllib.error.HTTPError):
+        try:
+            error.close()
+        except Exception:
+            pass
+        code = error.code if type(error.code) is int and 100 <= error.code <= 599 else "unknown"
+        return f"Release publication failed: HTTP status {code}; response details suppressed."
+    if isinstance(error, TimeoutError):
+        return "Release publication failed: network timeout (TimeoutError); details suppressed."
+    if isinstance(error, urllib.error.URLError):
+        return "Release publication failed: network request error (URLError); details suppressed."
+    if isinstance(error, ValueError) and error.args == (core.SOURCE.ERROR,):
+        return f"Release publication failed: {core.SOURCE.ERROR}"
+    return "Release publication failed; local and HTTP details suppressed."
+
+
 def main() -> int:
-    """无参数发布入口，只输出固定安全错误。 / Provides a no-argument publication entry point with fixed safe errors only."""
+    """无参数入口，仅输出受信任保护原因、状态码或脱敏错误类别。 / Provides a no-argument entry point exposing only trusted guard reasons, status codes or redacted error categories."""
     try:
         core.require(len(sys.argv) == 1, "Arguments are forbidden")
         publish_release(os.environ)
-    except Exception:
-        print("Release publication failed; local and HTTP details suppressed.", file=sys.stderr)
+    except Exception as error:
+        print(_failure_message(error), file=sys.stderr)
         return 1
     return 0
 

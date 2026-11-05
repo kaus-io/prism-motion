@@ -96,7 +96,7 @@ def prepare(path: Path, output: Path) -> str:
         title.write(version + "\n")
     with (output / "RELEASE_NOTES.md").open("x", encoding="utf-8", newline="\n") as notes:
         notes.write(release_notes(version))
-    return f"https://github.com/{REPOSITORY}/releases/new?tag=v{version}&title={version}"
+    return f"https://github.com/{REPOSITORY}/releases/new?tag={version}&title={version}"
 
 
 def main() -> int:

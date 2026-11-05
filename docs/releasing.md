@@ -9,7 +9,7 @@
 
 ## 版本与渠道
 
-版本唯一来源为 [gradle.properties](<../gradle.properties>) 的 `version`，Release 标签为 `v<version>`。CLI 横幅、Maven 坐标和标签必须一致；已发布内容不覆盖、不删除、不重新赋予其它字节。
+版本唯一来源为 [gradle.properties](<../gradle.properties>) 的 `version`，Release 标签直接使用 `<version>`，不加 `v` 前缀。CLI 横幅、Maven 坐标和标签必须一致；已发布内容不覆盖、不删除、不重新赋予其它字节。
 
 Maven 命名空间为 `com.kaus-io`。客户端使用 `mavenCentral()`，显式指定清单版本。
 

@@ -17,11 +17,11 @@ class ReleaseRequestTest(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="prism-release-request-test-")
         self.addCleanup(self.temporary.cleanup)
         self.path = Path(self.temporary.name) / "event.json"
-        self.payload = {"action": "published", "release": {"tag_name": "v" + VERSION, "draft": False},
+        self.payload = {"action": "published", "release": {"tag_name": VERSION, "draft": False},
                         "repository": {"full_name": MODULE.REPOSITORY}}
         self.write()
         self.environment = {"GITHUB_EVENT_NAME": "release", "GITHUB_REPOSITORY": MODULE.REPOSITORY,
-                            "GITHUB_REF": "refs/tags/v" + VERSION, "GITHUB_REF_TYPE": "tag",
+                            "GITHUB_REF": "refs/tags/" + VERSION, "GITHUB_REF_TYPE": "tag",
                             "GITHUB_EVENT_PATH": str(self.path)}
 
     def write(self):
@@ -49,10 +49,19 @@ class ReleaseRequestTest(unittest.TestCase):
 
     def test_wrong_environment_repository_tag_ref_type_or_head_ref_is_rejected(self):
         for key, value in (("GITHUB_REPOSITORY", "other/repository"), ("GITHUB_REF", "refs/heads/main"),
-                           ("GITHUB_REF", "refs/tags/v1.0.0-alpha02"), ("GITHUB_REF", ""),
+                           ("GITHUB_REF", "refs/tags/1.0.0-alpha02"), ("GITHUB_REF", ""),
                            ("GITHUB_REF_TYPE", "branch"), ("GITHUB_REF_TYPE", ""), ("GITHUB_HEAD_REF", "feature")):
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 MODULE.publication_requested({**self.environment, key: value}, VERSION)
+
+    def test_v_prefixed_tag_is_not_the_manifest_version(self):
+        environment = {**self.environment, "GITHUB_REF": "refs/tags/v" + VERSION}
+        with self.assertRaises(ValueError):
+            MODULE.publication_requested(environment, VERSION)
+        self.payload["release"]["tag_name"] = "v" + VERSION
+        self.write()
+        with self.assertRaises(ValueError):
+            MODULE.publication_requested(self.environment, VERSION)
 
     def test_missing_or_unreadable_event_path_is_rejected(self):
         for value in ("", str(self.path.parent / "missing.json"), str(self.path.parent)):
@@ -70,9 +79,9 @@ class ReleaseRequestTest(unittest.TestCase):
                 MODULE.publication_requested(self.environment, VERSION)
 
     def test_missing_mismatched_or_draft_release_is_rejected(self):
-        for release in (None, {}, {"tag_name": "v" + VERSION}, {"tag_name": "v" + VERSION, "draft": True},
-                        {"tag_name": "v" + VERSION, "draft": "false"}, {"tag_name": "v" + VERSION, "draft": 0},
-                        {"tag_name": "v1.0.0-alpha02", "draft": False}):
+        for release in (None, {}, {"tag_name": VERSION}, {"tag_name": VERSION, "draft": True},
+                        {"tag_name": VERSION, "draft": "false"}, {"tag_name": VERSION, "draft": 0},
+                        {"tag_name": "1.0.0-alpha02", "draft": False}):
             self.payload["release"] = release
             self.write()
             with self.subTest(release=release), self.assertRaises(ValueError):

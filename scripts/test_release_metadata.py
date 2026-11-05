@@ -66,7 +66,7 @@ class ReleaseMetadataTest(unittest.TestCase):
         self.assertEqual((self.output / "TITLE.txt").read_text(), VERSION + "\n")
         self.assertEqual((self.output / "RELEASE_NOTES.md").read_text(), MODULE.release_notes(VERSION))
         self.assertEqual(self.snapshot(), before)
-        self.assertEqual(url, f"https://github.com/kaus-io/prism-motion/releases/new?tag=v{VERSION}&title={VERSION}")
+        self.assertEqual(url, f"https://github.com/kaus-io/prism-motion/releases/new?tag={VERSION}&title={VERSION}")
 
     def test_bilingual_notes_have_identical_supported_platforms_and_limits(self):
         notes = MODULE.release_notes(VERSION)
@@ -193,7 +193,7 @@ class ReleaseMetadataTest(unittest.TestCase):
                 with contextlib.redirect_stdout(output):
                     self.assertEqual(MODULE.main(), 0)
         self.assertEqual(output.getvalue().strip(),
-                         f"https://github.com/kaus-io/prism-motion/releases/new?tag=v{VERSION}&title={VERSION}")
+                         f"https://github.com/kaus-io/prism-motion/releases/new?tag={VERSION}&title={VERSION}")
 
     def test_cli_cannot_override_version_or_accept_a_token(self):
         for option in ("--version", "--token"):

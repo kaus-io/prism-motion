@@ -45,7 +45,7 @@ def environment() -> dict[str, str]:
         "MAVEN_CENTRAL_USERNAME": "synthetic-central-user",
         "MAVEN_CENTRAL_PASSWORD": "synthetic-central-password",
         "GITHUB_REPOSITORY": "kaus-io/prism-motion",
-        "GITHUB_REF": f"refs/tags/v{VERSION}", "GITHUB_REF_TYPE": "tag",
+        "GITHUB_REF": f"refs/tags/{VERSION}", "GITHUB_REF_TYPE": "tag",
         "GITHUB_EVENT_NAME": "release", "GITHUB_SHA": "a" * 40,
     }
 
@@ -78,7 +78,7 @@ class TemporaryTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.env = environment()
         self.event = self.root / "release-event.json"
-        self.event.write_text(json.dumps({"action": "published", "release": {"tag_name": "v" + VERSION, "draft": False},
+        self.event.write_text(json.dumps({"action": "published", "release": {"tag_name": VERSION, "draft": False},
                                          "repository": {"full_name": "kaus-io/prism-motion"}}), encoding="utf-8")
         self.env["GITHUB_EVENT_PATH"] = str(self.event)
 
@@ -357,7 +357,7 @@ class BundleTest(TemporaryTest):
         self.env["GITHUB_REF"] = "refs/heads/main"
         result = self.run_script("publish-central-bundle.py", "publish", "--bundle", str(self.output))
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("exact root-version Release", result.stderr)
+        self.assertIn("Release tag must equal the manifest version exactly", result.stderr)
         self.assertNotIn(self.env["MAVEN_CENTRAL_PASSWORD"], result.stderr)
 
 
@@ -415,23 +415,23 @@ class SourceProofTest(unittest.TestCase):
     """只模拟 Git 输出，绝不访问实际仓库或网络。 / Mocks Git output without accessing a real repository or network."""
 
     def test_lightweight_remote_tag(self):
-        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, "a" * 40 + f"\trefs/tags/v{VERSION}\n", ""))
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, "a" * 40 + f"\trefs/tags/{VERSION}\n", ""))
         self.assertEqual(publisher.SOURCE.remote_tag_commit(VERSION, runner), "a" * 40)
         arguments = runner.call_args.args[0]
         self.assertIn("https://github.com/kaus-io/prism-motion.git", arguments)
-        self.assertEqual(arguments[-2:], [f"refs/tags/v{VERSION}", f"refs/tags/v{VERSION}^{{}}"])
+        self.assertEqual(arguments[-2:], [f"refs/tags/{VERSION}", f"refs/tags/{VERSION}^{{}}"])
         self.assertEqual(runner.call_args.kwargs["env"]["GIT_CONFIG_GLOBAL"], os.devnull)
         self.assertEqual(runner.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
         self.assertNotIn("GH_TOKEN", runner.call_args.kwargs["env"])
 
     def test_annotated_and_nested_tag_use_server_peeled_commit(self):
         for tag_object in ("b" * 40, "c" * 40):
-            output = tag_object + f"\trefs/tags/v{VERSION}\n" + "a" * 40 + f"\trefs/tags/v{VERSION}^{{}}\n"
+            output = tag_object + f"\trefs/tags/{VERSION}\n" + "a" * 40 + f"\trefs/tags/{VERSION}^{{}}\n"
             runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, output, ""))
             self.assertEqual(publisher.SOURCE.remote_tag_commit(VERSION, runner), "a" * 40)
 
     def test_missing_malformed_duplicate_or_foreign_remote_refs_fail_closed(self):
-        reference = f"refs/tags/v{VERSION}"
+        reference = f"refs/tags/{VERSION}"
         for output in ("", "a" * 40 + f"\t{reference}^{{}}\n", "invalid\t" + reference,
                        "a" * 40 + "\trefs/heads/main\n", ("a" * 40 + "\t" + reference + "\n") * 2):
             runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, output, ""))
@@ -523,17 +523,17 @@ class PublishTest(TemporaryTest):
         with self.assertRaises(publisher.ReleaseError):
             publisher.release_version("1.0.0-alpha02")
         for field, value in (("GITHUB_REPOSITORY", "attacker/prism-motion"), ("GITHUB_REF", "refs/heads/main"),
-                             ("GITHUB_REF", "refs/tags/v1.0.0-alpha02"), ("GITHUB_EVENT_NAME", "pull_request"),
+                             ("GITHUB_REF", "refs/tags/1.0.0-alpha02"), ("GITHUB_EVENT_NAME", "pull_request"),
                              ("GITHUB_EVENT_NAME", "pull_request_target"), ("GITHUB_HEAD_REF", "feature")):
             with self.subTest(field=field, value=value), self.assertRaises(publisher.ReleaseError):
                 publisher.production_guard({**self.env, field: value}, VERSION)
 
     def test_release_payload_guard_rejects_other_action_missing_tag_draft_or_cross_repository(self):
         payloads = [
-            {"action": "edited", "release": {"tag_name": "v" + VERSION, "draft": False}},
+            {"action": "edited", "release": {"tag_name": VERSION, "draft": False}},
             {"action": "published", "release": {"draft": False}},
-            {"action": "published", "release": {"tag_name": "v" + VERSION, "draft": True}},
-            {"action": "published", "release": {"tag_name": "v" + VERSION, "draft": False},
+            {"action": "published", "release": {"tag_name": VERSION, "draft": True}},
+            {"action": "published", "release": {"tag_name": VERSION, "draft": False},
              "repository": {"full_name": "other/repository"}},
         ]
         for payload in payloads:

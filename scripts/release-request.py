@@ -15,10 +15,11 @@ def publication_requested(environment: Mapping[str, str], version: str) -> bool:
     if environment.get("GITHUB_EVENT_NAME") != "release":
         return False
     if not (environment.get("GITHUB_REPOSITORY") == REPOSITORY
-            and environment.get("GITHUB_REF") == f"refs/tags/v{version}"
             and environment.get("GITHUB_REF_TYPE") == "tag"
             and not environment.get("GITHUB_HEAD_REF")):
-        raise ValueError("Central publication requires the canonical exact-version Release tag")
+        raise ValueError("Central publication requires the canonical repository and a Release tag context")
+    if environment.get("GITHUB_REF") != f"refs/tags/{version}":
+        raise ValueError("Release tag must equal the manifest version exactly, without a v prefix")
     try:
         event = json.loads(Path(environment["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
     except (KeyError, OSError, UnicodeError, ValueError):
@@ -32,7 +33,7 @@ def publication_requested(environment: Mapping[str, str], version: str) -> bool:
     if event["action"] != "published":
         return False
     release = event.get("release")
-    if not (isinstance(release, dict) and release.get("tag_name") == f"v{version}"
+    if not (isinstance(release, dict) and release.get("tag_name") == version
             and release.get("draft") is False):
         raise ValueError("Release event must identify the exact non-draft version tag")
     return True
