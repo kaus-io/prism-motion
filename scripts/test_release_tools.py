@@ -46,7 +46,7 @@ def environment() -> dict[str, str]:
         "MAVEN_CENTRAL_PASSWORD": "synthetic-central-password",
         "GITHUB_REPOSITORY": "kaus-io/prism-motion",
         "GITHUB_REF": f"refs/tags/v{VERSION}", "GITHUB_REF_TYPE": "tag",
-        "GITHUB_EVENT_NAME": "push",
+        "GITHUB_EVENT_NAME": "push", "GITHUB_SHA": "a" * 40,
     }
 
 
@@ -386,6 +386,53 @@ class Clock:
         self.now += seconds
 
 
+class SourceProofTest(unittest.TestCase):
+    """只模拟 Git 输出，绝不访问实际仓库或网络。 / Mocks Git output without accessing a real repository or network."""
+
+    def test_lightweight_remote_tag(self):
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, "a" * 40 + f"\trefs/tags/v{VERSION}\n", ""))
+        self.assertEqual(publisher.SOURCE.remote_tag_commit(VERSION, runner), "a" * 40)
+        arguments = runner.call_args.args[0]
+        self.assertIn("https://github.com/kaus-io/prism-motion.git", arguments)
+        self.assertEqual(arguments[-2:], [f"refs/tags/v{VERSION}", f"refs/tags/v{VERSION}^{{}}"])
+        self.assertEqual(runner.call_args.kwargs["env"]["GIT_CONFIG_GLOBAL"], os.devnull)
+        self.assertEqual(runner.call_args.kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
+        self.assertNotIn("GH_TOKEN", runner.call_args.kwargs["env"])
+
+    def test_annotated_and_nested_tag_use_server_peeled_commit(self):
+        for tag_object in ("b" * 40, "c" * 40):
+            output = tag_object + f"\trefs/tags/v{VERSION}\n" + "a" * 40 + f"\trefs/tags/v{VERSION}^{{}}\n"
+            runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, output, ""))
+            self.assertEqual(publisher.SOURCE.remote_tag_commit(VERSION, runner), "a" * 40)
+
+    def test_missing_malformed_duplicate_or_foreign_remote_refs_fail_closed(self):
+        reference = f"refs/tags/v{VERSION}"
+        for output in ("", "a" * 40 + f"\t{reference}^{{}}\n", "invalid\t" + reference,
+                       "a" * 40 + "\trefs/heads/main\n", ("a" * 40 + "\t" + reference + "\n") * 2):
+            runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, output, ""))
+            with self.assertRaises(ValueError):
+                publisher.SOURCE.remote_tag_commit(VERSION, runner)
+
+    def test_unknown_network_failure_is_sanitized(self):
+        for result in (subprocess.CompletedProcess([], 2, "", "SECRET_REMOTE_DETAIL"),
+                       subprocess.TimeoutExpired("SECRET_COMMAND", 45)):
+            runner = mock.Mock()
+            if isinstance(result, Exception):
+                runner.side_effect = result
+            else:
+                runner.return_value = result
+            with self.assertRaises(ValueError) as error:
+                publisher.SOURCE.remote_tag_commit(VERSION, runner)
+            self.assertNotIn("SECRET", str(error.exception))
+
+    def test_checkout_requires_canonical_event_sha(self):
+        runner = mock.Mock(return_value=subprocess.CompletedProcess([], 0, "a" * 40 + "\n", ""))
+        self.assertEqual(publisher.SOURCE.checkout_commit({"GITHUB_SHA": "a" * 40}, runner), "a" * 40)
+        for environment in ({}, {"GITHUB_SHA": "b" * 40}):
+            with self.assertRaises(ValueError):
+                publisher.SOURCE.checkout_commit(environment, runner)
+
+
 class PublishTest(TemporaryTest):
     """验证生产保护、单次上传、状态轮询和脱敏。 / Verifies production guards, single upload, polling and redaction."""
 
@@ -402,6 +449,8 @@ class PublishTest(TemporaryTest):
 
     def invoke(self, client, **kwargs):
         """用合成 Portal 客户端执行受保护上传。 / Executes guarded publication using a synthetic Portal client."""
+        kwargs.setdefault("tag_resolver", lambda version: "a" * 40)
+        kwargs.setdefault("commit_resolver", lambda environment: "a" * 40)
         with mock.patch.object(publisher, "PortalClient", return_value=client), contextlib.redirect_stdout(io.StringIO()):
             return publisher.publish(self.bundle, self.manifest, VERSION, self.env, self.identifier, **kwargs)
 
@@ -414,6 +463,30 @@ class PublishTest(TemporaryTest):
                              ("GITHUB_EVENT_NAME", "pull_request_target"), ("GITHUB_HEAD_REF", "feature")):
             with self.subTest(field=field, value=value), self.assertRaises(publisher.ReleaseError):
                 publisher.production_guard({**self.env, field: value}, VERSION)
+
+    def test_remote_tag_mismatch_prevents_all_central_calls(self):
+        client = FakePortal()
+        with self.assertRaises(ValueError):
+            self.invoke(client, tag_resolver=lambda version: "b" * 40)
+        self.assertEqual(client.calls, [])
+        self.assertFalse(self.identifier.exists())
+
+    def test_remote_tag_moving_during_preflight_blocks_upload(self):
+        commits = iter(("a" * 40, "b" * 40))
+        client = FakePortal()
+        with self.assertRaises(ValueError):
+            self.invoke(client, tag_resolver=lambda version: next(commits))
+        self.assertTrue(client.calls)
+        self.assertTrue(all(method == "HEAD" for method, _, _ in client.calls))
+
+    def test_resume_cannot_claim_published_after_remote_tag_moves(self):
+        commits = iter(("a" * 40, "b" * 40))
+        client = FakePortal()
+        with self.assertRaises(ValueError):
+            self.invoke(client, deployment_id=DEPLOYMENT, tag_resolver=lambda version: next(commits))
+        self.assertEqual(len(client.calls), 1)
+        self.assertIn("/status?", client.calls[0][1])
+        self.assertNotIn("deployment_state", self.output.read_text())
 
     def test_single_upload_exact_bundle_and_published_outputs(self):
         client = FakePortal()

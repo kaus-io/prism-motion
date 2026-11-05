@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,10 @@ import subprocess
 import sys
 import tempfile
 
+SOURCE_SPEC = importlib.util.spec_from_file_location("github_release_source", Path(__file__).with_name("verify-release-source.py"))
+assert SOURCE_SPEC is not None and SOURCE_SPEC.loader is not None
+SOURCE = importlib.util.module_from_spec(SOURCE_SPEC)
+SOURCE_SPEC.loader.exec_module(SOURCE)
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "kaus-io/prism-motion"
 FILES = {"prism-motion-linux-x86_64", "prism-motion-windows-x86_64.exe", "LICENSE.txt",
@@ -47,13 +52,16 @@ def gh(arguments: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(["gh", *arguments], capture_output=True, text=True, timeout=180)
 
 
-def publish(path: Path, version: str, commit: str, runner=gh) -> str:
+def publish(path: Path, version: str, commit: str, runner=gh, *, tag_resolver=None) -> str:
     """安全续发相同 draft；已公开产物必须逐字节一致。 / Resumes identical drafts and requires byte equality for already public assets."""
     files = distribution(path)
+    resolver = tag_resolver or SOURCE.remote_tag_commit
+    SOURCE.verify_tag(version, commit, resolver)
     tag = f"v{version}"
     response = runner(["api", f"repos/{REPOSITORY}/releases/tags/{tag}"])
     if response.returncode:
         require("HTTP 404" in response.stderr, "Cannot determine whether the GitHub release exists")
+        SOURCE.verify_tag(version, commit, resolver)
         created = runner(["release", "create", tag, "--verify-tag", "--draft", "--prerelease", "--latest=false",
                           "--target", commit, "--title", f"Prism Motion {version}", "--notes",
                           "Prism preview: Maven libraries use com.kaus-io and this exact version. Linux CLI supports authoring and inspection; Windows currently supports inspection. macOS is not included."])
@@ -77,12 +85,16 @@ def publish(path: Path, version: str, commit: str, runner=gh) -> str:
     missing = FILES - set(names)
     if not release["draft"]:
         require(not missing, "Published release is incomplete; refusing to alter it")
+        SOURCE.verify_tag(version, commit, resolver)
         return f"https://github.com/{REPOSITORY}/releases/tag/{tag}"
     for name in sorted(missing):
+        SOURCE.verify_tag(version, commit, resolver)
         uploaded = runner(["release", "upload", tag, str(files[name])])
         require(uploaded.returncode == 0, "Draft upload failed; identical existing assets can be resumed")
+    SOURCE.verify_tag(version, commit, resolver)
     completed = runner(["release", "edit", tag, "--draft=false", "--prerelease", "--latest=false"])
     require(completed.returncode == 0, "Draft remains unpublished; rerun the same validated assets to resume")
+    SOURCE.verify_tag(version, commit, resolver)
     return f"https://github.com/{REPOSITORY}/releases/tag/{tag}"
 
 
@@ -97,8 +109,7 @@ def main() -> int:
         require(re.fullmatch(r"1\.0\.0-alpha(?:0[1-9]|[1-9][0-9])", version) is not None, "Unsupported prerelease version")
         require(os.environ.get("GITHUB_REPOSITORY") == REPOSITORY and os.environ.get("GITHUB_REF") == f"refs/tags/v{version}"
                 and os.environ.get("GH_TOKEN"), "GitHub publication requires an authorized canonical tag run")
-        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-        require(re.fullmatch(r"[0-9a-f]{40}", commit) is not None, "Invalid release commit")
+        commit = SOURCE.checkout_commit(os.environ)
         url = publish(args.distribution.resolve(strict=True), version, commit)
         if output := os.environ.get("GITHUB_OUTPUT"):
             with open(output, "a", encoding="utf-8") as handle:

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import importlib.util
 import io
 import json
 import os
@@ -27,6 +28,10 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 
+SOURCE_SPEC = importlib.util.spec_from_file_location("central_release_source", Path(__file__).with_name("verify-release-source.py"))
+assert SOURCE_SPEC is not None and SOURCE_SPEC.loader is not None
+SOURCE = importlib.util.module_from_spec(SOURCE_SPEC)
+SOURCE_SPEC.loader.exec_module(SOURCE)
 GROUP = "com.kaus-io"
 PREFIX = "com/kaus-io/"
 PORTAL = "https://central.sonatype.com/api/v1/publisher"
@@ -426,7 +431,7 @@ def poll(client: PortalClient, deployment: str, interval: float, timeout: float,
 
 def publish(bundle_path: Path, manifest: Path, version: str, environment: Mapping[str, str],
             deployment_id_file: Path | None = None, interval: float = 10, timeout: float = 1800,
-            deployment_id: str | None = None) -> str:
+            deployment_id: str | None = None, *, tag_resolver=None, commit_resolver=None) -> str:
     """先检查标签、清单和不可变性，再上传一次并等待发布。 / Checks tag, manifest and immutability, uploads once, then waits for publication."""
     production_guard(environment, version)
     require(1 <= interval <= 60 and 1 <= timeout <= 7200, "Polling bounds are invalid")
@@ -445,6 +450,10 @@ def publish(bundle_path: Path, manifest: Path, version: str, environment: Mappin
         require(safe_path(Path(environment["GITHUB_OUTPUT"])).is_file(), "Invalid runner output file")
     with path.open("rb") as stream:
         poms = verify_bundle(stream, path.name, manifest, version)
+        commit = (commit_resolver or SOURCE.checkout_commit)(environment)
+        require(commit == environment.get("GITHUB_SHA"), "Checkout differs from the canonical event commit")
+        resolver = tag_resolver or SOURCE.remote_tag_commit
+        SOURCE.verify_tag(version, commit, resolver)
         client = PortalClient(environment)
         if deployment_id is not None:
             print(f"Central deployment {deployment_id}: RESUMING", flush=True)
@@ -453,6 +462,7 @@ def publish(bundle_path: Path, manifest: Path, version: str, environment: Mappin
                     identifier.write(deployment_id + "\n")
             output_value(environment, "deployment_id", deployment_id)
             poll(client, deployment_id, interval, timeout)
+            SOURCE.verify_tag(version, commit, resolver)
             output_value(environment, "deployment_state", "PUBLISHED")
             return deployment_id
         preflight(client, poms)
@@ -462,6 +472,7 @@ def publish(bundle_path: Path, manifest: Path, version: str, environment: Mappin
         suffix = f"\r\n--{boundary}--\r\n".encode("ascii")
         headers = {"Content-Type": f"multipart/form-data; boundary={boundary}",
                    "Content-Length": str(len(prefix) + os.fstat(stream.fileno()).st_size + len(suffix))}
+        SOURCE.verify_tag(version, commit, resolver)
         code, body = client.request("POST", PORTAL + "/upload?publishingType=AUTOMATIC",
                                     data=multipart(stream, boundary), headers=headers, timeout=120)
         require(code == 201, "Central upload failed or is ambiguous; never blindly retry this upload")
@@ -475,6 +486,7 @@ def publish(bundle_path: Path, manifest: Path, version: str, environment: Mappin
             stream.write(deployment + "\n")
     output_value(environment, "deployment_id", deployment)
     poll(client, deployment, interval, timeout)
+    SOURCE.verify_tag(version, commit, resolver)
     output_value(environment, "deployment_state", "PUBLISHED")
     return deployment
 

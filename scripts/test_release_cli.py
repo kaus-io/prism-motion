@@ -1,7 +1,12 @@
 """校验发行版检查器的协议边界。 / Tests release-checker protocol boundaries."""
 
 import hashlib
+import contextlib
+import io
 import importlib.util
+import json
+import os
+import sys
 from pathlib import Path
 import struct
 import tempfile
@@ -23,6 +28,33 @@ VERSION = load("release_cli_version", "release-version.py")
 
 
 class ReleaseCliTest(unittest.TestCase):
+    def test_chinese_json_does_not_use_the_windows_ansi_code_page(self):
+        message = {"message": "旧外部格式 .ktx 已废弃，只接受 .prism"}
+        payload = json.dumps(message, ensure_ascii=False).encode("utf-8")
+        with self.assertRaises(UnicodeDecodeError):
+            payload.decode("cp1252")
+        with tempfile.TemporaryDirectory(prefix="prism-cli-encoding-test-") as directory:
+            with patch("subprocess._text_encoding", return_value="cp1252"):
+                result = SMOKE.capture_cli([sys.executable, "-c", f"import os; os.write(1, {payload!r})"],
+                                           Path(directory), os.environ.copy())
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout), message)
+
+    def test_ci_failure_annotation_is_portable_and_redacts_credentials(self):
+        with tempfile.TemporaryDirectory(prefix="prism-cli-error-test-") as directory:
+            binary = Path(directory) / "fake.exe"
+            binary.write_bytes(b"test")
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with patch.object(sys, "argv", ["smoke", "--binary", str(binary), "--version", "1.0.0-alpha01"]):
+                with patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "GH_TOKEN": "fake-release-token"}, clear=True):
+                    with patch.object(SMOKE, "smoke", side_effect=ValueError("中文 fake-release-token")):
+                        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                            self.assertEqual(SMOKE.main(), 1)
+            self.assertIn("::error::", stdout.getvalue())
+            stdout.getvalue().encode("ascii")
+            self.assertNotIn("fake-release-token", stdout.getvalue() + stderr.getvalue())
+            self.assertIn("[REDACTED]", stdout.getvalue())
+
     def test_cli_does_not_receive_release_credentials(self):
         environment = {"PATH": "safe-path", "GH_TOKEN": "fake", "NPM_TOKEN": "fake",
                        "GPG_KEY_CONTENTS": "fake", "ORG_GRADLE_PROJECT_signingInMemoryKey": "fake",

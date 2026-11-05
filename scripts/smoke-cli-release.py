@@ -85,6 +85,12 @@ def child_environment(cache: Path) -> dict[str, str]:
     return environment
 
 
+def capture_cli(arguments: list[str], directory: Path, environment: dict[str, str]) -> subprocess.CompletedProcess:
+    """JSON 统一使用 UTF-8，不依赖 Windows ANSI 代码页。 / Reads JSON as UTF-8 regardless of the Windows ANSI code page."""
+    return subprocess.run(arguments, cwd=directory, env=environment, capture_output=True,
+                          text=True, encoding="utf-8", timeout=120)
+
+
 def smoke(binary: Path, version: str, fixtures: Path | None = None, export: Path | None = None) -> None:
     """复制发布文件到无工具邻居的新目录，并走真实调用。 / Runs the actual distributable in a fresh directory without neighboring tools."""
     name = "astcenc.exe" if os.name == "nt" else "astcenc"
@@ -98,16 +104,17 @@ def smoke(binary: Path, version: str, fixtures: Path | None = None, export: Path
         environment = child_environment(cache)
 
         def run(*arguments: str, code: int = 0, as_json: bool = False):
-            result = subprocess.run([str(executable), *arguments], cwd=root, env=environment,
-                                    capture_output=True, text=True, timeout=120)
-            require(result.returncode == code, f"CLI {arguments[0]} returned {result.returncode}, expected {code}")
+            result = capture_cli([str(executable), *arguments], root, environment)
+            require(result.returncode == code,
+                    f"CLI {arguments[0]} returned {result.returncode}, expected {code}: {result.stderr[-1000:]}")
             if as_json:
                 data = json.loads(result.stdout)
                 require(data.get("ok") == (code == 0), "CLI JSON status disagrees with exit status")
                 return data
             return result.stdout.strip()
 
-        require(run("version") == version, "CLI version disagrees with release version")
+        actual_version = run("version")
+        require(actual_version == version, f"CLI version {actual_version!r} disagrees with release version {version}")
         engines = run("engines", "--json", as_json=True)
         require({item["suffix"] for item in engines["engines"]} == {".prism"}, "CLI advertises obsolete formats")
         tool = Path(engines["tools"]["astcenc"]).resolve()
@@ -169,7 +176,16 @@ def main() -> int:
     try:
         smoke(args.binary.resolve(strict=True), args.version, args.fixtures, args.export_fixtures)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
-        print(f"CLI release smoke failed: {error}", file=__import__("sys").stderr)
+        message = f"CLI release smoke failed: {error}"
+        for name, value in os.environ.items():
+            if value and (name.startswith("ORG_GRADLE_PROJECT_signing") or name.startswith("ORG_GRADLE_PROJECT_mavenCentral")
+                          or name in {"GPG_KEY_CONTENTS", "MAVEN_CENTRAL_USERNAME", "MAVEN_CENTRAL_PASSWORD", "SIGNING_PASSWORD", "GH_TOKEN", "GITHUB_TOKEN", "NPM_TOKEN"}):
+                message = message.replace(value, "[REDACTED]")
+        print(message, file=__import__("sys").stderr)
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            portable = message[-3000:].encode("ascii", "backslashreplace").decode("ascii")
+            encoded = portable.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            print(f"::error::{encoded}")
         return 1
     return 0
 

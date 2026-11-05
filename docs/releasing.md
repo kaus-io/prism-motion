@@ -63,7 +63,7 @@ SDK 与 Prism 暂存分开检查，之后合成同一个签名 Central deploymen
 本地与设备验证完成、对应提交的 CI 门禁通过后，给该提交创建与清单一致的 `v<version>` 标签并推送。标签运行才有发布权限：
 
 1. 再次完整构建与验证。
-2. [Central 上传器](<../scripts/publish-central-bundle.py>) 上传已校验的原始暂存字节，不重新构建；拒绝已经公开的同版本坐标。
+2. [Central 上传器](<../scripts/publish-central-bundle.py>) 上传已校验的原始暂存字节，不重新构建；拒绝已经公开的同版本坐标。[来源校验器](<../scripts/verify-release-source.py>) 在远端写入与声明成功前核对标签剥离后的提交、checkout 与事件 SHA；标签缺失、移动或无法核实都会关闭发布门禁。
 3. 等待 Portal 状态确认为 `PUBLISHED`，不是只看到上传成功或 `VALIDATED`。
 4. 只有 Central 成功后，才创建 GitHub 预发布并上传已校验的 CLI 文件。不会将 alpha 设为最新正式版。
 

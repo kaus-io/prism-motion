@@ -64,7 +64,7 @@ class GitHubReleaseTest(unittest.TestCase):
 
     def test_new_prerelease_is_draft_until_every_asset_uploaded(self):
         client = FakeGh()
-        MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client)
+        MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client, tag_resolver=lambda version: "a" * 40)
         self.assertFalse(client.state)
         self.assertEqual(client.assets, self.assets)
         self.assertIn("--draft", client.calls[1])
@@ -73,7 +73,7 @@ class GitHubReleaseTest(unittest.TestCase):
     def test_partial_draft_resumes_only_missing_assets(self):
         existing = dict(list(self.assets.items())[:2])
         client = FakeGh(True, existing)
-        MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client)
+        MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client, tag_resolver=lambda version: "a" * 40)
         uploaded = [Path(call[3]).name for call in client.calls if call[:2] == ["release", "upload"]]
         self.assertEqual(set(uploaded), MODULE.FILES - existing.keys())
         self.assertEqual(client.assets, self.assets)
@@ -81,7 +81,7 @@ class GitHubReleaseTest(unittest.TestCase):
 
     def test_identical_published_release_never_mutates(self):
         client = FakeGh(False, self.assets)
-        MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client)
+        MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client, tag_resolver=lambda version: "a" * 40)
         self.assertEqual([call[1] for call in client.calls if call[0] == "release"], ["download"])
 
     def test_changed_asset_or_incomplete_public_release_fails(self):
@@ -89,20 +89,43 @@ class GitHubReleaseTest(unittest.TestCase):
         changed["LICENSE.txt"] = b"unexpected"
         for client in (FakeGh(True, changed), FakeGh(False, {"LICENSE.txt": self.assets["LICENSE.txt"]})):
             with self.assertRaises(ValueError):
-                MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client)
+                MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client, tag_resolver=lambda version: "a" * 40)
             self.assertFalse(any(call[1] in ("upload", "edit") for call in client.calls if call[0] == "release"))
 
     def test_ambiguous_api_failure_does_not_create(self):
         client = FakeGh(denied=True)
         with self.assertRaises(ValueError):
-            MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client)
+            MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client, tag_resolver=lambda version: "a" * 40)
         self.assertEqual(len(client.calls), 1)
+
+    def test_remote_tag_mismatch_prevents_all_github_calls(self):
+        for client in (FakeGh(), FakeGh(True, self.assets), FakeGh(False, self.assets)):
+            with self.assertRaises(ValueError):
+                MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client, tag_resolver=lambda version: "b" * 40)
+            self.assertFalse(client.calls)
+
+    def test_tag_moving_before_create_upload_or_edit_prevents_mutation(self):
+        for client in (FakeGh(), FakeGh(True), FakeGh(True, self.assets)):
+            commits = iter(("a" * 40, "b" * 40))
+            with self.assertRaises(ValueError):
+                MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client,
+                               tag_resolver=lambda version: next(commits))
+            self.assertFalse(any(call[:2] in (["release", "create"], ["release", "upload"], ["release", "edit"])
+                                 for call in client.calls))
+
+    def test_existing_published_release_rechecks_remote_tag_before_success(self):
+        commits = iter(("a" * 40, "b" * 40))
+        client = FakeGh(False, self.assets)
+        with self.assertRaises(ValueError):
+            MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client,
+                           tag_resolver=lambda version: next(commits))
+        self.assertEqual([call[1] for call in client.calls if call[0] == "release"], ["download"])
 
     def test_invalid_distribution_prevents_all_remote_calls(self):
         (self.root / "LICENSE.txt").write_text("tampered")
         client = FakeGh()
         with self.assertRaises(ValueError):
-            MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client)
+            MODULE.publish(self.root, "1.0.0-alpha01", "a" * 40, client, tag_resolver=lambda version: "a" * 40)
         self.assertFalse(client.calls)
 
 
