@@ -1,7 +1,6 @@
 ### Prism Motion
 
-![language-kotlin](https://img.shields.io/badge/language-kotlin-orange.svg)
-[![license-MIT](https://img.shields.io/badge/license-MIT-blue)](<LICENSE>)
+![language-kotlin](https://img.shields.io/badge/language-kotlin-orange.svg) [![license-MIT](https://img.shields.io/badge/license-MIT-blue)](<LICENSE>)
 
 ### 介绍
 
